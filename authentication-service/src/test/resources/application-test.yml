@@ -1,0 +1,30 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;NON_KEYWORDS=USER
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  flyway:
+    enabled: false
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+app:
+  jwt:
+    access-token-expiry: 900
+    refresh-token-expiry: 86400
+  security:
+    max-login-attempts: 5
+    account-lock-duration: PT15M
+
+logging:
+  level:
+    root: WARN
+    com.example.skishop.authentication: DEBUG
