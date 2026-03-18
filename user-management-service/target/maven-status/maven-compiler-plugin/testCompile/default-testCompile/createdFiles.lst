@@ -1,0 +1,6 @@
+com/example/skishop/usermanagement/service/AddressServiceTest.class
+com/example/skishop/usermanagement/controller/AdminUserControllerTest.class
+com/example/skishop/usermanagement/service/UserServiceTest.class
+com/example/skishop/usermanagement/service/AdminUserServiceTest.class
+com/example/skishop/usermanagement/service/UserPreferenceServiceTest.class
+com/example/skishop/usermanagement/controller/UserControllerTest.class
