@@ -14,6 +14,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("GlobalExceptionHandler テスト")
 class GlobalExceptionHandlerTest {
 
+    /** テスト用 DTO: パスワードフィールドを持つ */
+    record LoginRequest(String username, String password) {}
+
     private GlobalExceptionHandler handler;
     private MockHttpServletRequest request;
 
@@ -110,12 +113,10 @@ class GlobalExceptionHandlerTest {
     @DisplayName("バリデーションエラーのハンドリング時、パスワードフィールドの拒否値はマスクされる")
     void should_maskPasswordField_when_validationErrorOccursOnSensitiveField() {
         // Arrange
-        var target = new Object();
-        var bindingResult = new BeanPropertyBindingResult(target, "target");
-        bindingResult.rejectValue("password", "NotBlank", "パスワードは必須です");
-        // 拒否値をシミュレートするため直接 FieldError を追加
+        var loginRequest = new LoginRequest("user@example.com", "secret123");
+        var bindingResult = new BeanPropertyBindingResult(loginRequest, "loginRequest");
         bindingResult.addError(new org.springframework.validation.FieldError(
-                "target", "password", "secret123", false, null, null, "パスワードは必須です"));
+                "loginRequest", "password", "secret123", false, null, null, "パスワードは必須です"));
 
         var ex = new MethodArgumentNotValidException(null, bindingResult);
 
