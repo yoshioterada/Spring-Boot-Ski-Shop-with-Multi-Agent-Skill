@@ -140,6 +140,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       KAFKA_BROKERS: kafka:9092
+      KAFKA_REPLICATION_FACTOR: 1
       SPRING_PROFILES_ACTIVE: kafka
     depends_on:
       postgres:
@@ -165,6 +166,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       KAFKA_BROKERS: kafka:9092
+      KAFKA_REPLICATION_FACTOR: 1
       SPRING_PROFILES_ACTIVE: kafka
     depends_on:
       postgres:
@@ -188,6 +190,7 @@ services:
       MONGODB_URI: mongodb://mongo:27017/skishop_inventory
       JWT_SECRET: ${JWT_SECRET}
       KAFKA_BROKERS: kafka:9092
+      KAFKA_REPLICATION_FACTOR: 1
     depends_on:
       mongo:
         condition: service_healthy
@@ -212,6 +215,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       KAFKA_BROKERS: kafka:9092
+      KAFKA_REPLICATION_FACTOR: 1
       SPRING_PROFILES_ACTIVE: kafka
     depends_on:
       postgres:
@@ -237,6 +241,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       KAFKA_BROKERS: kafka:9092
+      KAFKA_REPLICATION_FACTOR: 1
     depends_on:
       postgres:
         condition: service_healthy
@@ -261,6 +266,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       KAFKA_BROKERS: kafka:9092
+      KAFKA_REPLICATION_FACTOR: 1
     depends_on:
       postgres:
         condition: service_healthy
@@ -287,7 +293,9 @@ services:
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
       AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-5}
+      JWT_SECRET: ${JWT_SECRET}
       KAFKA_BROKERS: kafka:9092
+      KAFKA_REPLICATION_FACTOR: 1
     depends_on:
       postgres:
         condition: service_healthy
@@ -314,6 +322,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       KAFKA_BROKERS: kafka:9092
+      KAFKA_REPLICATION_FACTOR: 1
     depends_on:
       postgres:
         condition: service_healthy
@@ -338,6 +347,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       KAFKA_BROKERS: kafka:9092
+      KAFKA_REPLICATION_FACTOR: 1
       AZURE_COMMUNICATION_ENDPOINT: ${AZURE_COMMUNICATION_ENDPOINT}
       AZURE_COMMUNICATION_CONNECTION_STRING: ${AZURE_COMMUNICATION_CONNECTION_STRING}
       MAIL_SENDER_ADDRESS: ${MAIL_SENDER_ADDRESS}

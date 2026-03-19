@@ -483,6 +483,24 @@ k6 run --config config/smoke.json scripts/health-check.js
         └── java/                  # 単体テスト・統合テスト
 ```
 
+## Swagger
+
+各マイクロサービスの Swagger UI URL:
+
+| # | サービス | ポート | Swagger UI | OpenAPI JSON |
+|---|---------|--------|------------|--------------|
+| 1 | authentication-service | 8080 | http://localhost:8080/swagger-ui/index.html | http://localhost:8080/v3/api-docs |
+| 2 | user-management-service | 8081 | http://localhost:8081/swagger-ui/index.html | http://localhost:8081/v3/api-docs |
+| 3 | inventory-management-service | 8082 | http://localhost:8082/swagger-ui/index.html | http://localhost:8082/v3/api-docs |
+| 4 | sales-management-service | 8083 | http://localhost:8083/swagger-ui/index.html | http://localhost:8083/v3/api-docs |
+| 5 | payment-cart-service | 8084 | http://localhost:8084/swagger-ui/index.html | http://localhost:8084/v3/api-docs |
+| 6 | point-service | 8085 | http://localhost:8085/swagger-ui/index.html | http://localhost:8085/v3/api-docs |
+| 7 | ai-support-service | 8087 | http://localhost:8087/swagger-ui/index.html | http://localhost:8087/v3/api-docs |
+| 8 | coupon-service | 8088 | http://localhost:8088/swagger-ui/index.html | http://localhost:8088/v3/api-docs |
+| 9 | mailsend-service | 8089 | http://localhost:8089/swagger-ui.html | http://localhost:8089/v3/api-docs |
+| 10 | api-gateway-service | 8090 | http://localhost:8090/swagger-ui/index.html | http://localhost:8090/v3/api-docs |
+
+
 ---
 
 ## ライセンス
