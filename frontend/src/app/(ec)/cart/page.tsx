@@ -2,7 +2,7 @@
 
 import { Minus, Package, Plus, ShoppingCart, Tag, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
@@ -325,11 +325,18 @@ export default function CartPage() {
           </Card>
 
           {/* Points */}
-          {data?.points && (
+          {data?.points ? (
             <Card>
               <CardContent className="py-3">
                 <p className="text-muted-foreground text-sm">保有ポイント</p>
                 <p className="text-lg font-semibold">{formatPoints(data.points.currentBalance)}</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="py-3">
+                <p className="text-muted-foreground text-sm">保有ポイント</p>
+                <p className="text-muted-foreground text-sm">取得中...</p>
               </CardContent>
             </Card>
           )}

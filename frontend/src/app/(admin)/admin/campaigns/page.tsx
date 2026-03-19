@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { Pagination } from '@/components/common/pagination';
 import { SkeletonTable } from '@/components/common/skeleton-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -94,6 +95,8 @@ export default function AdminCampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Campaign | null>(null);
@@ -228,7 +231,7 @@ export default function AdminCampaignsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {campaigns.map((c) => {
+                {campaigns.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map((c) => {
                   const cfg = statusConfig[c.status] ?? {
                     label: c.status,
                     variant: 'outline' as const,
@@ -281,6 +284,16 @@ export default function AdminCampaignsPage() {
                 })}
               </TableBody>
             </Table>
+            {campaigns.length > pageSize && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={Math.ceil(campaigns.length / pageSize)}
+                totalElements={campaigns.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(0); }}
+              />
+            )}
           )}
         </CardContent>
       </Card>

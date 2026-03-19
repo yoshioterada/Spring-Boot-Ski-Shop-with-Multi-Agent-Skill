@@ -101,6 +101,7 @@ export default function CheckoutPage() {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
   const [timeoutMessage, setTimeoutMessage] = useState('');
+  const [showOrderHistoryLink, setShowOrderHistoryLink] = useState(false);
   const processingRef = useRef(false);
 
   const {
@@ -244,6 +245,7 @@ export default function CheckoutPage() {
         }
         setTimeoutMessage('');
         setError('注文が完了した可能性があります。注文履歴をご確認ください。');
+        setShowOrderHistoryLink(true);
       } else {
         setError(err instanceof Error ? err.message : '注文処理中にエラーが発生しました');
       }
@@ -452,7 +454,7 @@ export default function CheckoutPage() {
               {error && (
                 <div className="border-destructive/50 bg-destructive/10 text-destructive w-full rounded-lg border p-3 text-sm">
                   <p>{error}</p>
-                  {error.includes('注文履歴') && (
+                  {showOrderHistoryLink && (
                     <Link href="/mypage/orders" className="mt-1 inline-block underline">
                       注文履歴を確認する
                     </Link>

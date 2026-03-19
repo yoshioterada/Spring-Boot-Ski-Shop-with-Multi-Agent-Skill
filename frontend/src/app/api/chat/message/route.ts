@@ -14,6 +14,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
     const res = await fetch(`${AI_SERVICE_URL}/api/v1/chat/message`, {
       method: 'POST',
       headers: {
@@ -22,7 +25,10 @@ export async function POST(request: NextRequest) {
         'X-Request-Id': crypto.randomUUID(),
       },
       body: JSON.stringify({ ...body, userId: session.user.id }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     const data = await res.json().catch(() => null);
     return NextResponse.json(data, { status: res.status });

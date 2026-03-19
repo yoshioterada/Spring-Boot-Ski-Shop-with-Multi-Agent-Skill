@@ -1,6 +1,6 @@
 'use client';
 
-import { Gift, Package, Star, User } from 'lucide-react';
+import { Gift, Package, RotateCcw, Star, User } from 'lucide-react';
 import Link from 'next/link';
 
 import { Breadcrumb } from '@/components/layout/breadcrumb';
@@ -33,6 +33,12 @@ const quickLinks = [
     icon: Gift,
     title: 'クーポン',
     description: '利用可能なクーポンを確認',
+  },
+  {
+    href: '/mypage/returns',
+    icon: RotateCcw,
+    title: '返品・交換',
+    description: '返品申請と履歴の確認',
   },
 ] as const;
 

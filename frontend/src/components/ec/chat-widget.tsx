@@ -46,7 +46,7 @@ function parseProductLinks(content: string): React.ReactNode[] {
     parts.push(
       <Link
         key={`${productId}-${match.index}`}
-        href={`/products/${productId}` as never}
+        href={`/product/${productId}` as never}
         className="text-primary hover:text-primary/80 font-medium underline underline-offset-2"
       >
         {productName}

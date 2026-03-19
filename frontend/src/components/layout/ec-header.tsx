@@ -11,6 +11,8 @@ import {
   Heart,
   Settings,
   Bot,
+  Ticket,
+  RotateCcw,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -41,7 +43,7 @@ const navigation = [
 export function ECHeader() {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, isAdmin, logout } = useAuth();
   const { cart } = useCart();
   const cartItemCount = cart?.items?.length ?? 0;
 
@@ -117,6 +119,18 @@ export function ECHeader() {
                   <User className="h-5 w-5" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
+                  {isAdmin && (
+                    <>
+                      <DropdownMenuItem
+                        render={<Link href={'/admin/dashboard' as Route} />}
+                        className="flex items-center gap-2 font-semibold text-blue-600"
+                      >
+                        <Settings className="h-4 w-4" />
+                        管理者ダッシュボード
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                   <DropdownMenuItem
                     render={<Link href={'/mypage' as Route} />}
                     className="flex items-center gap-2"
@@ -144,6 +158,20 @@ export function ECHeader() {
                   >
                     <Settings className="h-4 w-4" />
                     {t('shared.nav.profile')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    render={<Link href={'/mypage/coupons' as Route} />}
+                    className="flex items-center gap-2"
+                  >
+                    <Ticket className="h-4 w-4" />
+                    {t('mypage.coupons.title')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    render={<Link href={'/mypage/returns' as Route} />}
+                    className="flex items-center gap-2"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    {t('ecReturns.title')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem variant="destructive" className="flex items-center gap-2" onClick={() => logout()}>
@@ -197,8 +225,54 @@ export function ECHeader() {
                       {item.name}
                     </Link>
                   ))}
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      window.dispatchEvent(new Event('open-ai-chat'));
+                    }}
+                    className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                  >
+                    <Bot className="h-4 w-4" />
+                    {t('shared.nav.aiChat')}
+                  </button>
                   <div className="my-2 border-t" />
-                  {!isAuthenticated && (
+                  {isAuthenticated ? (
+                    <>
+                      {isAdmin && (
+                        <>
+                          <Link href="/admin/dashboard" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50">
+                            <Settings className="h-4 w-4" />
+                            管理者ダッシュボード
+                          </Link>
+                          <div className="my-2 border-t" />
+                        </>
+                      )}
+                      <Link href="/mypage" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-muted">
+                        <User className="h-4 w-4" />
+                        {t('shared.nav.mypage')}
+                      </Link>
+                      <Link href="/mypage/orders" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-muted">
+                        <Package className="h-4 w-4" />
+                        {t('shared.nav.orders')}
+                      </Link>
+                      <Link href="/mypage/points" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-muted">
+                        <Heart className="h-4 w-4" />
+                        {t('shared.nav.points')}
+                      </Link>
+                      <Link href="/mypage/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-muted">
+                        <Settings className="h-4 w-4" />
+                        {t('shared.nav.profile')}
+                      </Link>
+                      <div className="my-2 border-t" />
+                      <button
+                        onClick={() => { setMobileMenuOpen(false); void logout(); }}
+                        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        {t('shared.nav.logout')}
+                      </button>
+                    </>
+                  ) : (
                     <>
                       <Link
                         href="/login"

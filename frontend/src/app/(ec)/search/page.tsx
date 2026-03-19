@@ -3,7 +3,7 @@
 import { Search, ThumbsDown, ThumbsUp } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useDeferredValue, useEffect, useState } from 'react';
 
 import { SkeletonCard } from '@/components/common/skeleton-card';
 import { ProductCard } from '@/components/ec/product-card';
@@ -19,6 +19,7 @@ function SearchContent() {
   const searchParams = useSearchParams();
   const query = searchParams.get('q') || '';
   const [results, setResults] = useState<ProductResponse[]>([]);
+  const deferredResults = useDeferredValue(results);
   const [totalHits, setTotalHits] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState(query);
@@ -32,6 +33,7 @@ function SearchContent() {
     }
     setIsLoading(true);
     try {
+      // Try keyword search first
       const res = await fetch(`/api/search?query=${encodeURIComponent(q)}&size=20`);
       if (res.ok) {
         const data: SearchResponse = await res.json();
@@ -51,6 +53,42 @@ function SearchContent() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }));
+
+        // If keyword search returns no results, try semantic search as fallback
+        if (products.length === 0) {
+          try {
+            const semanticRes = await fetch('/api/search/semantic', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: q, size: 20 }),
+            });
+            if (semanticRes.ok) {
+              const semanticData = await semanticRes.json();
+              const semanticProducts: ProductResponse[] = (semanticData.results || []).map((r: { productId: string; name: string; description: string; brand: string; price: number }, i: number) => ({
+                id: r.productId,
+                sku: `SKU-SEM-${String(i)}`,
+                name: r.name,
+                description: r.description,
+                brand: r.brand,
+                categoryId: '',
+                regularPrice: r.price,
+                salePrice: null,
+                currency: 'JPY',
+                stockQuantity: 10,
+                availableQuantity: 10,
+                status: 'ACTIVE' as const,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }));
+              setResults(semanticProducts);
+              setTotalHits(semanticData.totalHits || semanticProducts.length);
+              return;
+            }
+          } catch {
+            // Semantic search failed, continue with empty keyword results
+          }
+        }
+
         setResults(products);
         setTotalHits(data.totalHits || products.length);
       }

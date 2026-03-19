@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { Pagination } from '@/components/common/pagination';
 import { SkeletonTable } from '@/components/common/skeleton-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -99,6 +100,8 @@ const statusConfig: Record<
 
 export default function AdminCouponsPage() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [cpnPage, setCpnPage] = useState(0);
+  const [cpnPageSize, setCpnPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -186,7 +189,7 @@ export default function AdminCouponsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {coupons.map((c) => {
+                {coupons.slice(cpnPage * cpnPageSize, (cpnPage + 1) * cpnPageSize).map((c) => {
                   const cfg = statusConfig[c.status] ?? {
                     label: c.status,
                     variant: 'outline' as const,
@@ -232,6 +235,16 @@ export default function AdminCouponsPage() {
                 })}
               </TableBody>
             </Table>
+            {coupons.length > cpnPageSize && (
+              <Pagination
+                currentPage={cpnPage}
+                totalPages={Math.ceil(coupons.length / cpnPageSize)}
+                totalElements={coupons.length}
+                pageSize={cpnPageSize}
+                onPageChange={setCpnPage}
+                onPageSizeChange={(size) => { setCpnPageSize(size); setCpnPage(0); }}
+              />
+            )}
           )}
         </CardContent>
       </Card>

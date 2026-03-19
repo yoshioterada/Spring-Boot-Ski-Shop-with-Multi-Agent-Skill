@@ -10,9 +10,11 @@ export function HeroBanner() {
   const isWinterSeason = month >= 10 || month <= 3;
 
   return (
-    <section className="relative overflow-hidden">
-      {/* Background gradient */}
+    <section className="relative overflow-hidden" aria-label="ヒーローバナー">
+      {/* Background gradient - LCP element with priority rendering */}
       <div
+        role="img"
+        aria-hidden="true"
         className={`absolute inset-0 ${
           isWinterSeason
             ? 'bg-gradient-to-br from-[#0078D4] via-[#1e3a5f] to-[#0a1628]'

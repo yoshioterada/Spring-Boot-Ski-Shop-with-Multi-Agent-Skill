@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { Pagination } from '@/components/common/pagination';
 import { SkeletonTable } from '@/components/common/skeleton-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -107,6 +108,8 @@ const typeLabels: Record<string, string> = {
 
 export default function AdminMailLogsPage() {
   const [logs, setLogs] = useState<MailLog[]>([]);
+  const [mlPage, setMlPage] = useState(0);
+  const [mlPageSize, setMlPageSize] = useState(20);
   const [stats, setStats] = useState<DailyStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -272,7 +275,7 @@ export default function AdminMailLogsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {logs.map((log) => {
+                {logs.slice(mlPage * mlPageSize, (mlPage + 1) * mlPageSize).map((log) => {
                   const cfg = statusConfig[log.status] ?? {
                     label: log.status,
                     variant: 'outline' as const,
@@ -313,6 +316,16 @@ export default function AdminMailLogsPage() {
                 })}
               </TableBody>
             </Table>
+            {logs.length > mlPageSize && (
+              <Pagination
+                currentPage={mlPage}
+                totalPages={Math.ceil(logs.length / mlPageSize)}
+                totalElements={logs.length}
+                pageSize={mlPageSize}
+                onPageChange={setMlPage}
+                onPageSizeChange={(size) => { setMlPageSize(size); setMlPage(0); }}
+              />
+            )}
           )}
         </CardContent>
       </Card>

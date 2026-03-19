@@ -18,9 +18,13 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          const res = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+          const loginUrl = `${API_BASE_URL}/api/v1/auth/login`;
+          const res = await fetch(loginUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              Connection: 'close',
+            },
             body: JSON.stringify({
               email: credentials.email,
               password: credentials.password,
@@ -31,7 +35,8 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
-          const data = await res.json();
+          const text = await res.text();
+          const data = JSON.parse(text);
           return {
             id: data.userId,
             email: data.email,
@@ -43,7 +48,8 @@ export const authOptions: NextAuthOptions = {
             refreshToken: data.refreshToken,
             expiresAt: data.expiresAt,
           };
-        } catch {
+        } catch (error) {
+          console.error('[NextAuth] authorize error:', error);
           return null;
         }
       },
@@ -73,12 +79,16 @@ export const authOptions: NextAuthOptions = {
         try {
           const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              Connection: 'close',
+            },
             body: JSON.stringify({ refreshToken: token.refreshToken }),
           });
 
           if (res.ok) {
-            const refreshed = await res.json();
+            const text = await res.text();
+            const refreshed = JSON.parse(text);
             token.accessToken = refreshed.accessToken;
             token.refreshToken = refreshed.refreshToken;
             token.expiresAt = refreshed.expiresAt;

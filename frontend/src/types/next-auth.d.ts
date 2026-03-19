@@ -7,7 +7,7 @@ declare module 'next-auth' {
       email: string;
       firstName: string;
       lastName: string;
-      role: 'CUSTOMER' | 'ADMIN' | 'MANAGER';
+      role: 'ADMIN' | 'MANAGER' | 'STAFF' | 'EMPLOYEE' | 'USER' | 'CUSTOMER';
     } & DefaultSession['user'];
     accessToken: string;
     error?: string;
@@ -18,7 +18,7 @@ declare module 'next-auth' {
     email: string;
     firstName: string;
     lastName: string;
-    role: 'CUSTOMER' | 'ADMIN' | 'MANAGER';
+    role: 'ADMIN' | 'MANAGER' | 'STAFF' | 'EMPLOYEE' | 'USER' | 'CUSTOMER';
     accessToken: string;
     refreshToken: string;
     expiresAt: string;

@@ -2,6 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertTriangle, KeyRound, Loader2, Save, Settings, Shield, User } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -18,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/hooks/use-auth';
+import { formatDate } from '@/lib/format';
 
 // --- Schemas ---
 
@@ -405,16 +407,70 @@ function SettingsTab() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>レコメンド履歴</CardTitle>
-          <CardDescription>AI によるおすすめ商品の履歴</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-sm">Phase 7 で実装予定</p>
-        </CardContent>
-      </Card>
+      <RecommendationHistorySection />
     </div>
+  );
+}
+
+// --- Recommendation History Section ---
+
+interface RecommendationItem {
+  productId: string;
+  productName: string;
+  score: number;
+  reason: string;
+  recommendedAt: string;
+}
+
+function RecommendationHistorySection() {
+  const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/recommendations/history')
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('Failed'))))
+      .then((data: RecommendationItem[] | { recommendations: RecommendationItem[] }) => {
+        const items = Array.isArray(data) ? data : (data.recommendations ?? []);
+        setRecommendations(items.slice(0, 10));
+      })
+      .catch(() => {
+        setRecommendations([]);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>レコメンド履歴</CardTitle>
+        <CardDescription>AI によるおすすめ商品の履歴</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-muted h-8 animate-pulse rounded" />
+            ))}
+          </div>
+        ) : recommendations.length === 0 ? (
+          <p className="text-muted-foreground text-sm">レコメンド履歴はまだありません</p>
+        ) : (
+          <ul className="space-y-3">
+            {recommendations.map((rec, i) => (
+              <li key={`${rec.productId}-${i}`} className="flex items-center justify-between border-b pb-2 last:border-0">
+                <div>
+                  <Link href={`/product/${rec.productId}` as never} className="text-primary text-sm font-medium hover:underline">
+                    {rec.productName}
+                  </Link>
+                  <p className="text-muted-foreground text-xs">{rec.reason}</p>
+                </div>
+                <span className="text-muted-foreground text-xs">{formatDate(rec.recommendedAt)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

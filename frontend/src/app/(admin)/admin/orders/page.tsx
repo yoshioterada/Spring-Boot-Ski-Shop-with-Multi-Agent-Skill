@@ -388,7 +388,7 @@ export default function AdminOrdersPage() {
           <DialogHeader>
             <DialogTitle>ステータス変更</DialogTitle>
             <DialogDescription>
-              注文 {selectedOrder?.orderNumber} のステータスを変更します
+              注文 {selectedOrder?.orderNumber} のステータスを変更します。この操作は取り消せません。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">

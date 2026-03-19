@@ -259,5 +259,94 @@
       "GOLD": "ゴールド",
       "PLATINUM": "プラチナ"
     }
+  },
+  "ecDetail": {
+    "addToCart": "カートに追加",
+    "outOfStock": "在庫切れ",
+    "lowStock": "残りわずか",
+    "inStock": "在庫あり",
+    "quantity": "数量",
+    "description": "商品説明",
+    "specs": "仕様",
+    "similar": "関連商品",
+    "stockExceeded": "在庫数を超えています（最大{max}個）"
+  },
+  "ecReturns": {
+    "title": "返品・交換",
+    "apply": "返品申請",
+    "history": "返品履歴",
+    "orderId": "注文ID",
+    "reason": "返品理由",
+    "description": "詳細説明",
+    "submit": "申請する",
+    "noHistory": "返品履歴はありません",
+    "reasons": {
+      "DEFECTIVE": "商品の不良・破損",
+      "WRONG_ITEM": "注文と異なる商品が届いた",
+      "SIZE_ISSUE": "サイズが合わない",
+      "NOT_AS_DESCRIBED": "商品説明と異なる",
+      "OTHER": "その他"
+    },
+    "status": {
+      "PENDING": "申請中",
+      "APPROVED": "承認済み",
+      "REJECTED": "却下",
+      "COMPLETED": "完了"
+    }
+  },
+  "ecChat": {
+    "title": "AI アシスタント",
+    "placeholder": "メッセージを入力...",
+    "serviceDown": "AI チャットは現在ご利用いただけません",
+    "askWhat": "何についてお尋ねですか？",
+    "open": "AI チャットを開く",
+    "escalate": "オペレーターに接続",
+    "escalateSuccess": "オペレーターへ接続をリクエストしました。しばらくお待ちください。",
+    "escalateFail": "オペレーターへの接続に失敗しました。お電話をご利用ください。"
+  },
+  "adminInventory": {
+    "title": "在庫管理",
+    "lowStockAlert": "在庫僅少アラート",
+    "reorderRecommend": "発注推奨",
+    "reorderDescription": "売上予測に基づく在庫補充の推奨",
+    "stockIn": "入庫",
+    "stockOut": "出庫",
+    "bulkPrice": "一括セール価格設定"
+  },
+  "adminPoints": {
+    "title": "ポイント管理",
+    "grantPoints": "ポイント付与",
+    "batchExpire": "一括失効実行",
+    "tierDefs": "ティア定義",
+    "search": "ユーザー検索"
+  },
+  "adminCampaigns": {
+    "title": "キャンペーン管理",
+    "create": "新規作成",
+    "status": "ステータス"
+  },
+  "adminCoupons": {
+    "title": "クーポン管理",
+    "create": "新規作成",
+    "bulkGenerate": "一括生成"
+  },
+  "adminMailLogs": {
+    "title": "メール送信履歴",
+    "retry": "再送信",
+    "stats": "送信統計（過去7日間）"
+  },
+  "adminAnalytics": {
+    "title": "分析ダッシュボード",
+    "sales": "売上分析",
+    "users": "ユーザー分析",
+    "trends": "トレンド分析",
+    "search": "検索分析",
+    "reports": "レポート生成"
+  },
+  "adminAi": {
+    "title": "AIモデル管理",
+    "train": "トレーニング",
+    "deploy": "デプロイ",
+    "deployConfirm": "モデルのデプロイ"
   }
 }

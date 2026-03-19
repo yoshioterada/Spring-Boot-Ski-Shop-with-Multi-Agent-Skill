@@ -15,15 +15,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { t } from '@/lib/i18n';
 
 import type { PaginatedResponse, ProductResponse } from '@/types/api';
 
 const SORT_OPTIONS = [
-  { value: 'createdAt,desc', label: '新着順' },
-  { value: 'regularPrice,asc', label: '価格が安い順' },
-  { value: 'regularPrice,desc', label: '価格が高い順' },
-  { value: 'salesCount,desc', label: '人気順' },
-  { value: 'name,asc', label: '名前順' },
+  { value: 'createdAt,desc', label: t('ecCatalog.sort.newest') },
+  { value: 'regularPrice,asc', label: t('ecCatalog.sort.priceAsc') },
+  { value: 'regularPrice,desc', label: t('ecCatalog.sort.priceDesc') },
+  { value: 'salesCount,desc', label: t('ecCatalog.sort.relevance') },
+  { value: 'name,asc', label: t('ecCatalog.filter.sort') },
 ];
 
 const CATEGORIES = [

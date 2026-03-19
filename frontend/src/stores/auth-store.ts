@@ -5,7 +5,7 @@ interface AuthState {
   email: string | null;
   firstName: string | null;
   lastName: string | null;
-  role: 'CUSTOMER' | 'ADMIN' | 'MANAGER' | null;
+  role: 'ADMIN' | 'MANAGER' | 'STAFF' | 'EMPLOYEE' | 'USER' | 'CUSTOMER' | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
   isManager: boolean;
@@ -14,7 +14,7 @@ interface AuthState {
     email: string;
     firstName: string;
     lastName: string;
-    role: 'CUSTOMER' | 'ADMIN' | 'MANAGER';
+    role: 'ADMIN' | 'MANAGER' | 'STAFF' | 'EMPLOYEE' | 'USER' | 'CUSTOMER';
   }) => void;
   clearUser: () => void;
 }

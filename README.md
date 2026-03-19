@@ -501,6 +501,41 @@ k6 run --config config/smoke.json scripts/health-check.js
 | 10 | api-gateway-service | 8090 | http://localhost:8090/swagger-ui/index.html | http://localhost:8090/v3/api-docs |
 
 
+## デモ用アカウント作成
+
+全サービス起動後、以下のコマンドで検証用アカウントを作成できます。
+
+### 1. 一般ユーザーの作成
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"user@example.com","password":"User1234!","firstName":"テスト","lastName":"ユーザー"}'
+```
+
+### 2. 管理者の作成
+
+```bash
+# ユーザー登録
+curl -s -X POST http://localhost:8080/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"Admin1234!","firstName":"管理者","lastName":"テスト"}'
+
+# ロールを ADMIN に変更（PostgreSQL 直接更新）
+docker compose exec postgres psql -U postgres -d skishop_auth \
+  -c "UPDATE users SET role = 'ADMIN' WHERE email = 'admin@example.com';"
+```
+
+### 作成済みアカウント一覧
+
+| 種別 | メールアドレス | パスワード | ロール |
+|------|-------------|-----------|--------|
+| 一般ユーザー | `user@example.com` | `User1234!` | USER |
+| 管理者 | `admin@example.com` | `Admin1234!` | ADMIN |
+
+> **注意**: 登録 API で作成されたアカウントはメール認証済み（`emailVerified=true`）の状態で即座にログイン可能です。管理者は `/admin/dashboard` にアクセスできます。
+
+
 ---
 
 ## ライセンス

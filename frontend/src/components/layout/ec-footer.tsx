@@ -17,19 +17,19 @@ const footerLinks = {
   support: {
     title: t('shared.footer.support'),
     links: [
-      { name: t('shared.footer.contact'), href: '#' as Route },
-      { name: t('shared.footer.faq'), href: '#' as Route },
-      { name: t('shared.footer.shipping'), href: '#' as Route },
-      { name: t('shared.footer.returns'), href: '#' as Route },
+      { name: t('shared.footer.contact'), href: '/info/contact' as Route },
+      { name: t('shared.footer.faq'), href: '/info/faq' as Route },
+      { name: t('shared.footer.shipping'), href: '/info/shipping' as Route },
+      { name: t('shared.footer.returns'), href: '/info/returns-policy' as Route },
     ],
   },
   company: {
     title: t('shared.footer.company'),
     links: [
-      { name: t('shared.footer.about'), href: '#' as Route },
-      { name: t('shared.footer.terms'), href: '#' as Route },
-      { name: t('shared.footer.privacy'), href: '#' as Route },
-      { name: t('shared.footer.legal'), href: '#' as Route },
+      { name: t('shared.footer.about'), href: '/info/about' as Route },
+      { name: t('shared.footer.terms'), href: '/info/terms' as Route },
+      { name: t('shared.footer.privacy'), href: '/info/privacy' as Route },
+      { name: t('shared.footer.legal'), href: '/info/legal' as Route },
     ],
   },
 };
