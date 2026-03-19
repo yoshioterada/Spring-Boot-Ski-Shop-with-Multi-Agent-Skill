@@ -1,0 +1,263 @@
+{
+  "ecHome": {
+    "header": {
+      "searchPlaceholder": "スキー用品を検索",
+      "cartLabel": "カート"
+    },
+    "hero": {
+      "title": "Azure SkiShop へようこそ",
+      "subtitle": "プレミアムスキー用品で、最高の滑りを",
+      "ctaShop": "商品を見る",
+      "ctaAi": "AI相談を始める"
+    },
+    "categories": {
+      "title": "カテゴリから探す"
+    },
+    "trending": {
+      "title": "トレンド商品"
+    },
+    "recommended": {
+      "title": "あなたへのおすすめ"
+    }
+  },
+  "ecCatalog": {
+    "title": "全商品",
+    "filter": {
+      "category": "カテゴリ",
+      "price": "価格",
+      "brand": "ブランド",
+      "sort": "並び替え",
+      "clear": "フィルターをクリア"
+    },
+    "sort": {
+      "relevance": "おすすめ順",
+      "priceAsc": "価格が安い順",
+      "priceDesc": "価格が高い順",
+      "newest": "新着順"
+    },
+    "noResults": "商品が見つかりませんでした",
+    "viewMore": "もっと見る"
+  },
+  "ecProduct": {
+    "addToCart": "カートに追加",
+    "outOfStock": "在庫切れ",
+    "quantity": "数量",
+    "description": "商品説明",
+    "specifications": "仕様",
+    "reviews": "レビュー",
+    "similar": "関連商品"
+  },
+  "ecCart": {
+    "title": "ショッピングカート",
+    "empty": "カートに商品がありません",
+    "continueShopping": "買い物を続ける",
+    "subtotal": "小計",
+    "tax": "消費税",
+    "shipping": "送料",
+    "total": "合計",
+    "checkout": "レジに進む",
+    "remove": "削除"
+  },
+  "ecCheckout": {
+    "title": "ご注文手続き",
+    "step": {
+      "cart": "カート確認",
+      "shipping": "配送先",
+      "payment": "お支払い",
+      "coupon": "クーポン・ポイント",
+      "confirm": "注文確認",
+      "complete": "完了"
+    },
+    "placeOrder": "注文を確定する"
+  },
+  "auth": {
+    "login": {
+      "title": "ログイン",
+      "email": "メールアドレス",
+      "password": "パスワード",
+      "submit": "ログイン",
+      "forgotPassword": "パスワードをお忘れですか？",
+      "noAccount": "アカウントをお持ちでない方は",
+      "register": "新規登録",
+      "error": "メールアドレスまたはパスワードが正しくありません"
+    },
+    "register": {
+      "title": "新規登録",
+      "firstName": "名",
+      "lastName": "姓",
+      "email": "メールアドレス",
+      "password": "パスワード",
+      "confirmPassword": "パスワード（確認）",
+      "submit": "登録する",
+      "hasAccount": "既にアカウントをお持ちの方は",
+      "login": "ログイン"
+    },
+    "verifyEmail": {
+      "title": "メール認証",
+      "message": "確認メールを送信しました。メール内のリンクをクリックして認証を完了してください。",
+      "resend": "メールを再送信"
+    },
+    "forgotPassword": {
+      "title": "パスワードリセット",
+      "message": "登録されたメールアドレスを入力してください。パスワードリセット用のリンクを送信します。",
+      "submit": "リセットリンクを送信",
+      "success": "パスワードリセット用のメールを送信しました"
+    },
+    "resetPassword": {
+      "title": "新しいパスワードの設定",
+      "newPassword": "新しいパスワード",
+      "confirmPassword": "新しいパスワード（確認）",
+      "submit": "パスワードを変更"
+    }
+  },
+  "mypage": {
+    "title": "マイページ",
+    "orders": {
+      "title": "注文履歴",
+      "noOrders": "注文履歴がありません"
+    },
+    "profile": {
+      "title": "プロフィール",
+      "save": "保存"
+    },
+    "points": {
+      "title": "ポイント",
+      "balance": "ポイント残高",
+      "tier": "会員ランク",
+      "history": "ポイント履歴"
+    },
+    "coupons": {
+      "title": "クーポン",
+      "noCoupons": "利用可能なクーポンはありません"
+    }
+  },
+  "admin": {
+    "dashboard": {
+      "title": "ダッシュボード"
+    },
+    "sidebar": {
+      "dashboard": "ダッシュボード",
+      "products": "商品",
+      "categories": "カテゴリ",
+      "inventory": "在庫",
+      "orders": "注文",
+      "users": "ユーザー",
+      "points": "ポイント管理",
+      "campaigns": "キャンペーン",
+      "coupons": "クーポン",
+      "mailLogs": "メールログ",
+      "analytics": "分析",
+      "ai": "AIモデル",
+      "sectionProducts": "商品管理",
+      "sectionSales": "販売管理",
+      "sectionMarketing": "マーケティング",
+      "sectionSystem": "システム"
+    },
+    "common": {
+      "create": "新規作成",
+      "edit": "編集",
+      "delete": "削除",
+      "save": "保存",
+      "cancel": "キャンセル",
+      "search": "検索",
+      "filter": "フィルター",
+      "export": "エクスポート",
+      "actions": "アクション"
+    }
+  },
+  "shared": {
+    "nav": {
+      "home": "ホーム",
+      "catalog": "全商品",
+      "aiChat": "AI相談",
+      "login": "ログイン",
+      "register": "新規登録",
+      "logout": "ログアウト",
+      "mypage": "マイページ",
+      "orders": "注文履歴",
+      "points": "ポイント",
+      "profile": "プロフィール"
+    },
+    "footer": {
+      "shop": "ショップ",
+      "allProducts": "全商品",
+      "newArrivals": "新着商品",
+      "sale": "セール",
+      "support": "サポート",
+      "contact": "お問い合わせ",
+      "faq": "よくある質問",
+      "shipping": "配送について",
+      "returns": "返品・交換",
+      "company": "会社情報",
+      "about": "会社概要",
+      "terms": "利用規約",
+      "privacy": "プライバシーポリシー",
+      "legal": "特定商取引法に基づく表記"
+    },
+    "dialog": {
+      "confirm": "確認",
+      "cancel": "キャンセル"
+    },
+    "button": {
+      "submit": "送信",
+      "cancel": "キャンセル",
+      "addToCart": "カートに追加",
+      "checkout": "レジに進む",
+      "login": "ログイン",
+      "logout": "ログアウト",
+      "save": "保存",
+      "delete": "削除",
+      "edit": "編集",
+      "back": "戻る",
+      "next": "次へ",
+      "retry": "再試行"
+    },
+    "error": {
+      "networkError": "ネットワークエラーが発生しました",
+      "serverError": "サーバーエラーが発生しました",
+      "notFound": "ページが見つかりません",
+      "unauthorized": "ログインが必要です",
+      "forbidden": "アクセス権限がありません",
+      "required": "必須項目です",
+      "invalidEmail": "有効なメールアドレスを入力してください",
+      "passwordTooShort": "パスワードは8文字以上である必要があります",
+      "passwordMismatch": "パスワードが一致しません",
+      "generic": "エラーが発生しました"
+    },
+    "loading": "読み込み中...",
+    "noData": "データがありません",
+    "pagination": {
+      "showing": "全 {total} 件中 {from} - {to} 件",
+      "pageSize": "表示件数",
+      "page": "{current} / {total}"
+    }
+  },
+  "status": {
+    "order": {
+      "PENDING": "処理待ち",
+      "CONFIRMED": "確定",
+      "SHIPPED": "発送済み",
+      "DELIVERED": "配達完了",
+      "CANCELLED": "キャンセル",
+      "RETURNED": "返品"
+    },
+    "payment": {
+      "PENDING": "未払い",
+      "PROCESSING": "処理中",
+      "COMPLETED": "完了",
+      "FAILED": "失敗",
+      "REFUNDED": "返金済み"
+    },
+    "user": {
+      "ACTIVE": "有効",
+      "PENDING_VERIFICATION": "メール認証待ち",
+      "DEACTIVATED": "無効"
+    },
+    "tier": {
+      "BRONZE": "ブロンズ",
+      "SILVER": "シルバー",
+      "GOLD": "ゴールド",
+      "PLATINUM": "プラチナ"
+    }
+  }
+}

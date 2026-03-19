@@ -1,0 +1,213 @@
+{
+  "ecHome": {
+    "header": {
+      "searchPlaceholder": "Search ski gear",
+      "cartLabel": "Cart"
+    },
+    "hero": {
+      "title": "Welcome to Azure SkiShop",
+      "subtitle": "Premium ski gear for the ultimate ride",
+      "ctaShop": "Browse Products",
+      "ctaAi": "Start AI Consultation"
+    },
+    "categories": {
+      "title": "Browse by Category"
+    },
+    "trending": {
+      "title": "Trending Products"
+    },
+    "recommended": {
+      "title": "Recommended for You"
+    }
+  },
+  "ecCatalog": {
+    "title": "All Products",
+    "filter": {
+      "category": "Category",
+      "price": "Price",
+      "brand": "Brand",
+      "sort": "Sort by",
+      "clear": "Clear Filters"
+    },
+    "sort": {
+      "relevance": "Recommended",
+      "priceAsc": "Price: Low to High",
+      "priceDesc": "Price: High to Low",
+      "newest": "Newest"
+    },
+    "noResults": "No products found",
+    "viewMore": "View More"
+  },
+  "ecProduct": {
+    "addToCart": "Add to Cart",
+    "outOfStock": "Out of Stock",
+    "quantity": "Quantity",
+    "description": "Description",
+    "specifications": "Specifications",
+    "reviews": "Reviews",
+    "similar": "Similar Products"
+  },
+  "ecCart": {
+    "title": "Shopping Cart",
+    "empty": "Your cart is empty",
+    "continueShopping": "Continue Shopping",
+    "subtotal": "Subtotal",
+    "tax": "Tax",
+    "shipping": "Shipping",
+    "total": "Total",
+    "checkout": "Proceed to Checkout",
+    "remove": "Remove"
+  },
+  "ecCheckout": {
+    "title": "Checkout",
+    "step": {
+      "cart": "Cart Review",
+      "shipping": "Shipping",
+      "payment": "Payment",
+      "coupon": "Coupons & Points",
+      "confirm": "Confirm Order",
+      "complete": "Complete"
+    },
+    "placeOrder": "Place Order"
+  },
+  "auth": {
+    "login": {
+      "title": "Login",
+      "email": "Email Address",
+      "password": "Password",
+      "submit": "Login",
+      "forgotPassword": "Forgot your password?",
+      "noAccount": "Don't have an account?",
+      "register": "Register",
+      "error": "Invalid email or password"
+    },
+    "register": {
+      "title": "Register",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "email": "Email Address",
+      "password": "Password",
+      "confirmPassword": "Confirm Password",
+      "submit": "Register",
+      "hasAccount": "Already have an account?",
+      "login": "Login"
+    },
+    "verifyEmail": {
+      "title": "Email Verification",
+      "message": "A verification email has been sent. Please click the link in the email to complete verification.",
+      "resend": "Resend Email"
+    },
+    "forgotPassword": {
+      "title": "Reset Password",
+      "message": "Enter your registered email address. We will send you a password reset link.",
+      "submit": "Send Reset Link",
+      "success": "A password reset email has been sent"
+    },
+    "resetPassword": {
+      "title": "Set New Password",
+      "newPassword": "New Password",
+      "confirmPassword": "Confirm New Password",
+      "submit": "Change Password"
+    }
+  },
+  "mypage": {
+    "title": "My Page",
+    "orders": {
+      "title": "Order History",
+      "noOrders": "No order history"
+    },
+    "profile": {
+      "title": "Profile",
+      "save": "Save"
+    },
+    "points": {
+      "title": "Points",
+      "balance": "Point Balance",
+      "tier": "Membership Tier",
+      "history": "Point History"
+    },
+    "coupons": {
+      "title": "Coupons",
+      "noCoupons": "No available coupons"
+    }
+  },
+  "admin": {
+    "dashboard": {
+      "title": "Dashboard"
+    },
+    "common": {
+      "create": "Create",
+      "edit": "Edit",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "search": "Search",
+      "filter": "Filter",
+      "export": "Export",
+      "actions": "Actions"
+    }
+  },
+  "shared": {
+    "button": {
+      "submit": "Submit",
+      "cancel": "Cancel",
+      "addToCart": "Add to Cart",
+      "checkout": "Proceed to Checkout",
+      "login": "Login",
+      "logout": "Logout",
+      "save": "Save",
+      "delete": "Delete",
+      "edit": "Edit",
+      "back": "Back",
+      "next": "Next",
+      "retry": "Retry"
+    },
+    "error": {
+      "networkError": "A network error occurred",
+      "serverError": "A server error occurred",
+      "notFound": "Page not found",
+      "unauthorized": "Login required",
+      "forbidden": "Access denied",
+      "required": "This field is required",
+      "invalidEmail": "Please enter a valid email address",
+      "passwordTooShort": "Password must be at least 8 characters",
+      "passwordMismatch": "Passwords do not match",
+      "generic": "An error occurred"
+    },
+    "loading": "Loading...",
+    "noData": "No data available",
+    "pagination": {
+      "showing": "Showing {from} - {to} of {total}",
+      "pageSize": "Items per page",
+      "page": "{current} / {total}"
+    }
+  },
+  "status": {
+    "order": {
+      "PENDING": "Pending",
+      "CONFIRMED": "Confirmed",
+      "SHIPPED": "Shipped",
+      "DELIVERED": "Delivered",
+      "CANCELLED": "Cancelled",
+      "RETURNED": "Returned"
+    },
+    "payment": {
+      "PENDING": "Unpaid",
+      "PROCESSING": "Processing",
+      "COMPLETED": "Completed",
+      "FAILED": "Failed",
+      "REFUNDED": "Refunded"
+    },
+    "user": {
+      "ACTIVE": "Active",
+      "PENDING_VERIFICATION": "Pending Verification",
+      "DEACTIVATED": "Deactivated"
+    },
+    "tier": {
+      "BRONZE": "Bronze",
+      "SILVER": "Silver",
+      "GOLD": "Gold",
+      "PLATINUM": "Platinum"
+    }
+  }
+}

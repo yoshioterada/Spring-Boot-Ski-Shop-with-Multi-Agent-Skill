@@ -1,0 +1,6 @@
+openapi: 3.0.3
+info:
+  title: Azure SkiShop API Gateway
+  version: 1.0.0
+  description: API Gateway for Azure SkiShop microservices
+paths: {}
