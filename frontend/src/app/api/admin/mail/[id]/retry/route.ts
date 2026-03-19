@@ -12,6 +12,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const res = await fetch(`${MAIL_SERVICE_URL}/api/v1/mail/${id}/retry`, {
       method: 'POST',
+      headers: { Authorization: `Bearer ${session.accessToken}` },
     });
     const data = await res.json().catch(() => null);
     return NextResponse.json(data, { status: res.status });

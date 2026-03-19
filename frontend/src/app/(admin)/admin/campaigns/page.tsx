@@ -219,6 +219,7 @@ export default function AdminCampaignsPage() {
               キャンペーンが見つかりません
             </p>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -294,6 +295,7 @@ export default function AdminCampaignsPage() {
                 onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(0); }}
               />
             )}
+            </>
           )}
         </CardContent>
       </Card>

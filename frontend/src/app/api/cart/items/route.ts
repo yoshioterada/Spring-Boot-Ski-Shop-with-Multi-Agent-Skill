@@ -12,10 +12,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const body = await request.json();
-    const res = await fetch(`${CART_SERVICE_URL}/api/v1/cart/items`, {
+    const res = await fetch(`${CART_SERVICE_URL}/api/v1/cart/items?userId=${session.user.id}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...body, userId: session.user.id }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+      body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => null);
     return NextResponse.json(data, { status: res.status });

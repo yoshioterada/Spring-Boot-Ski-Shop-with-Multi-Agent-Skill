@@ -35,9 +35,9 @@ export function Pagination({
     <div className="flex items-center justify-between px-2 py-4">
       <div className="text-muted-foreground text-sm">
         {t('shared.pagination.showing', {
-          total: totalElements.toLocaleString(),
+          total: (totalElements ?? 0).toLocaleString(),
           from: (currentPage * pageSize + 1).toLocaleString(),
-          to: Math.min((currentPage + 1) * pageSize, totalElements).toLocaleString(),
+          to: Math.min((currentPage + 1) * pageSize, totalElements ?? 0).toLocaleString(),
         })}
       </div>
       <div className="flex items-center gap-4">

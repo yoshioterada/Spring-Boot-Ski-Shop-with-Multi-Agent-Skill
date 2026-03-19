@@ -17,7 +17,8 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import { ConfirmDialog } from '@/components/common/confirm-dialog';\nimport { Pagination } from '@/components/common/pagination';
+import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { Pagination } from '@/components/common/pagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -524,12 +525,12 @@ export default function AdminPointsPage() {
                     <TableCell className="text-right font-medium">×{tier.multiplier}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
-                        {(tier.benefits ?? []).map((b) => (
+                        {(Array.isArray(tier.benefits) ? tier.benefits : []).map((b) => (
                           <Badge key={b} variant="outline" className="text-xs">
                             {b}
                           </Badge>
                         ))}
-                        {(!tier.benefits || tier.benefits.length === 0) && (
+                        {(!Array.isArray(tier.benefits) || tier.benefits.length === 0) && (
                           <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </div>

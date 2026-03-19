@@ -124,8 +124,8 @@ export default function CheckoutPage() {
       try {
         const res = await fetch('/api/cart');
         if (!res.ok) throw new Error('カートの取得に失敗しました');
-        const data: CartResponse = await res.json();
-        setCart(data);
+        const data = await res.json();
+        setCart(data.cart as CartResponse);
       } catch {
         setError('カート情報の読み込みに失敗しました');
       } finally {

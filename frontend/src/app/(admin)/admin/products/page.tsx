@@ -58,10 +58,16 @@ interface Product {
 
 interface PagedProducts {
   content: Product[];
-  totalElements: number;
-  totalPages: number;
-  number: number;
-  size: number;
+  totalElements?: number;
+  totalPages?: number;
+  number?: number;
+  size?: number;
+  page?: {
+    totalElements: number;
+    totalPages: number;
+    number: number;
+    size: number;
+  };
 }
 
 // --- Schema ---
@@ -317,10 +323,10 @@ export default function AdminProductsPage() {
                 </TableBody>
               </Table>
               <Pagination
-                currentPage={products.number}
-                totalPages={products.totalPages}
-                totalElements={products.totalElements}
-                pageSize={products.size}
+                currentPage={products.page?.number ?? products.number ?? 0}
+                totalPages={products.page?.totalPages ?? products.totalPages ?? 1}
+                totalElements={products.page?.totalElements ?? products.totalElements ?? 0}
+                pageSize={products.page?.size ?? products.size ?? 20}
                 onPageChange={setPage}
                 onPageSizeChange={(size) => {
                   setPageSize(size);

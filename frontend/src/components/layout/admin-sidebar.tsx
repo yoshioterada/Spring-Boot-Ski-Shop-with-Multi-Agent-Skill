@@ -76,6 +76,7 @@ export function AdminSidebar() {
               size="icon"
               onClick={() => setCollapsed(!collapsed)}
               className="h-8 w-8"
+              suppressHydrationWarning
             >
               <ChevronLeft
                 className={`h-4 w-4 transition-transform ${collapsed ? 'rotate-180' : ''}`}

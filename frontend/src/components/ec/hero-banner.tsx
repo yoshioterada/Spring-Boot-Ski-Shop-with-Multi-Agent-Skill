@@ -2,12 +2,17 @@
 
 import { Bot, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
+import { useCallback } from 'react';
 
 import { buttonVariants } from '@/components/ui/button';
 
 export function HeroBanner() {
   const month = new Date().getMonth() + 1;
   const isWinterSeason = month >= 10 || month <= 3;
+
+  const handleOpenChat = useCallback(() => {
+    window.dispatchEvent(new Event('open-ai-chat'));
+  }, []);
 
   return (
     <section className="relative overflow-hidden" aria-label="ヒーローバナー">
@@ -55,17 +60,18 @@ export function HeroBanner() {
               href="/catalog"
               className={buttonVariants({
                 size: 'lg',
-                className: 'gap-2 bg-white text-[#0078D4] hover:bg-white/90',
+                className: 'gap-2 bg-orange-500 text-white hover:bg-orange-600 font-semibold shadow-lg',
               })}
             >
               <ShoppingBag className="h-5 w-5" />
               商品を見る
             </Link>
             <button
+              type="button"
+              onClick={handleOpenChat}
               className={buttonVariants({
                 size: 'lg',
-                variant: 'outline',
-                className: 'gap-2 border-white/30 text-white hover:bg-white/10',
+                className: 'gap-2 bg-orange-500 text-white hover:bg-orange-600 font-semibold shadow-lg cursor-pointer',
               })}
             >
               <Bot className="h-5 w-5" />

@@ -8,21 +8,33 @@ const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8087';
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.accessToken) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Request-Id': crypto.randomUUID(),
+    };
+    if (session?.accessToken) {
+      headers['Authorization'] = `Bearer ${session.accessToken}`;
     }
 
     const res = await fetch(`${AI_SERVICE_URL}/api/v1/chat/intents`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.accessToken}`,
-        'X-Request-Id': crypto.randomUUID(),
-      },
+      headers,
     });
 
-    const data = await res.json().catch(() => null);
-    return NextResponse.json(data, { status: res.status });
+    if (res.ok) {
+      const data = await res.json().catch(() => null);
+      return NextResponse.json(data, { status: res.status });
+    }
+
+    // If backend returns 403/401, return default intents so widget shows as available
+    return NextResponse.json({
+      intents: [
+        { name: '商品について相談する' },
+        { name: 'おすすめを教えて' },
+        { name: 'サイズの選び方' },
+      ],
+    });
   } catch {
     return NextResponse.json({ error: 'インテント一覧の取得に失敗しました' }, { status: 500 });
   }

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const POINT_SERVICE_URL = process.env.POINT_SERVICE_URL || 'http://localhost:8086';
+const POINT_SERVICE_URL = process.env.POINT_SERVICE_URL || 'http://localhost:8085';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const res = await fetch(
-      `${POINT_SERVICE_URL}/api/v1/admin/points/search?${searchParams.toString()}`,
+      `${POINT_SERVICE_URL}/api/v1/points/balance/${searchParams.get('query')}`,
+      { headers: { Authorization: `Bearer ${session.accessToken}` } },
     );
     const data = await res.json().catch(() => null);
     return NextResponse.json(data, { status: res.status });

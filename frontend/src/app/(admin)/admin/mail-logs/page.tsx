@@ -263,6 +263,7 @@ export default function AdminMailLogsPage() {
               メールログが見つかりません
             </p>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -326,6 +327,7 @@ export default function AdminMailLogsPage() {
                 onPageSizeChange={(size) => { setMlPageSize(size); setMlPage(0); }}
               />
             )}
+            </>
           )}
         </CardContent>
       </Card>

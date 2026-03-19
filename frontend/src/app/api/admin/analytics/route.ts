@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8088';
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8087';
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,7 +29,9 @@ export async function GET(request: NextRequest) {
     const qs = searchParams.toString();
     const url = `${AI_SERVICE_URL}${endpoint}${qs ? `?${qs}` : ''}`;
 
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    });
     const data = await res.json().catch(() => null);
     return NextResponse.json(data, { status: res.status });
   } catch {

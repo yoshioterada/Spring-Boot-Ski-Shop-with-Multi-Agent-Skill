@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
-const API_BASE = process.env.API_GATEWAY_URL || 'http://localhost:8080';
+const API_BASE = process.env.INVENTORY_SERVICE_URL || 'http://localhost:8082';
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

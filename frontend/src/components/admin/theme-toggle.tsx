@@ -41,7 +41,7 @@ export function ThemeToggle() {
   }, []);
 
   return (
-    <Button variant="ghost" size="icon" onClick={toggle} aria-label="テーマ切替">
+    <Button variant="ghost" size="icon" onClick={toggle} aria-label="テーマ切替" suppressHydrationWarning>
       {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
     </Button>
   );

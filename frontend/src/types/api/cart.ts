@@ -18,7 +18,9 @@ export interface CartItemResponse {
 
 export interface CartItemRequest {
   productId: string;
+  productName: string;
   quantity: number;
+  unitPrice: number;
 }
 
 export interface CreatePaymentIntentRequest {

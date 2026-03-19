@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const res = await fetch(
       `${PAYMENT_SERVICE_URL}/api/v1/admin/payments/history?${searchParams.toString()}`,
+      { headers: { Authorization: `Bearer ${session.accessToken}` } },
     );
     const data = await res.json().catch(() => null);
     return NextResponse.json(data, { status: res.status });

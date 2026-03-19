@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const POINT_SERVICE_URL = process.env.POINT_SERVICE_URL || 'http://localhost:8086';
+const POINT_SERVICE_URL = process.env.POINT_SERVICE_URL || 'http://localhost:8085';
 
 export async function POST(request: NextRequest) {
   try {

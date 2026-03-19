@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const POINT_SERVICE_URL = process.env.POINT_SERVICE_URL || 'http://localhost:8086';
+const POINT_SERVICE_URL = process.env.POINT_SERVICE_URL || 'http://localhost:8085';
 
 export async function GET() {
   try {
@@ -12,7 +12,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const res = await fetch(`${POINT_SERVICE_URL}/api/v1/admin/points/tiers`);
+    const res = await fetch(`${POINT_SERVICE_URL}/api/v1/tiers`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    });
     const data = await res.json().catch(() => null);
     return NextResponse.json(data, { status: res.status });
   } catch {

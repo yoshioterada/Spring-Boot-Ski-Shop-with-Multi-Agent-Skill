@@ -176,6 +176,7 @@ export default function AdminCouponsPage() {
               クーポンが見つかりません
             </p>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -245,6 +246,7 @@ export default function AdminCouponsPage() {
                 onPageSizeChange={(size) => { setCpnPageSize(size); setCpnPage(0); }}
               />
             )}
+            </>
           )}
         </CardContent>
       </Card>

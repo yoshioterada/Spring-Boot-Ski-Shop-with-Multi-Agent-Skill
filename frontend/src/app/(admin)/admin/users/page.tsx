@@ -45,7 +45,8 @@ interface AdminUser {
   lastName: string;
   phone?: string;
   status: string;
-  roles: string[];
+  roles?: string[];
+  roleName?: string;
   tier?: string;
   pointsBalance?: number;
   orderCount?: number;
@@ -54,10 +55,16 @@ interface AdminUser {
 
 interface PageResponse {
   content: AdminUser[];
-  totalElements: number;
-  totalPages: number;
-  number: number;
-  size: number;
+  totalElements?: number;
+  totalPages?: number;
+  number?: number;
+  size?: number;
+  page?: {
+    totalElements: number;
+    totalPages: number;
+    number: number;
+    size: number;
+  };
 }
 
 /* ---------- Status / Role styling ---------- */
@@ -103,6 +110,12 @@ function StatusBadge({ status }: { status: string }) {
       {cfg.label}
     </Badge>
   );
+}
+
+function getUserRoles(user: AdminUser): string[] {
+  if (user.roles && user.roles.length > 0) return user.roles;
+  if (user.roleName) return [user.roleName];
+  return [];
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -159,8 +172,8 @@ export default function AdminUsersPage() {
       if (!res.ok) throw new Error('Failed to fetch');
       const data: PageResponse = await res.json();
       setUsers(data.content ?? []);
-      setTotalElements(data.totalElements ?? 0);
-      setTotalPages(data.totalPages ?? 0);
+      setTotalElements(data.page?.totalElements ?? data.totalElements ?? 0);
+      setTotalPages(data.page?.totalPages ?? data.totalPages ?? 0);
     } catch {
       setUsers([]);
       toast.error('ユーザー一覧の取得に失敗しました');
@@ -213,7 +226,7 @@ export default function AdminUsersPage() {
       const res = await fetch(`/api/admin/users/${roleTarget.user.id}/roles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: roleTarget.newRole }),
+        body: JSON.stringify({ roleName: roleTarget.newRole }),
       });
       if (!res.ok) throw new Error('Failed');
       toast.success(
@@ -229,13 +242,13 @@ export default function AdminUsersPage() {
 
   const canChangeStatus = (targetUser: AdminUser) => {
     if (myRole === 'ADMIN') return true;
-    if (myRole === 'MANAGER' && !targetUser.roles.includes('ADMIN')) return true;
+    if (myRole === 'MANAGER' && !getUserRoles(targetUser).includes('ADMIN')) return true;
     return false;
   };
 
   const canChangeRole = (targetUser: AdminUser) => {
     if (myRole === 'ADMIN') return true;
-    if (myRole === 'MANAGER' && !targetUser.roles.includes('ADMIN')) return true;
+    if (myRole === 'MANAGER' && !getUserRoles(targetUser).includes('ADMIN')) return true;
     return false;
   };
 
@@ -329,7 +342,7 @@ export default function AdminUsersPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
-                        {(user.roles ?? []).map((r) => (
+                        {getUserRoles(user).map((r) => (
                           <RoleBadge key={r} role={r} />
                         ))}
                       </div>
@@ -361,7 +374,7 @@ export default function AdminUsersPage() {
                         {/* Role change */}
                         {canChangeRole(user) && (
                           <Select
-                            value={user.roles?.[0] ?? 'CUSTOMER'}
+                            value={getUserRoles(user)[0] ?? 'CUSTOMER'}
                             onValueChange={(val) => val && setRoleTarget({ user, newRole: val })}
                           >
                             <SelectTrigger className="h-8 w-32">
@@ -443,7 +456,7 @@ export default function AdminUsersPage() {
                 <div>
                   <p className="text-muted-foreground mb-1">ロール</p>
                   <div className="flex flex-wrap gap-1">
-                    {(detailUser.roles ?? []).map((r) => (
+                    {getUserRoles(detailUser).map((r) => (
                       <RoleBadge key={r} role={r} />
                     ))}
                   </div>
@@ -514,7 +527,9 @@ export default function AdminUsersPage() {
       {/* ----- Role Change Confirm ----- */}
       <ConfirmDialog
         open={!!roleTarget}
-        onOpenChange={(open) => !open && setRoleTarget(null)}
+        onOpenChange={(open) => {
+          if (!open) setRoleTarget(null);
+        }}
         title="ロール変更の確認"
         description={
           roleTarget
@@ -523,7 +538,7 @@ export default function AdminUsersPage() {
         }
         confirmLabel="変更"
         cancelLabel="キャンセル"
-        onConfirm={() => void handleRoleChange()}
+        onConfirm={handleRoleChange}
         variant={roleTarget?.newRole === 'ADMIN' ? 'destructive' : 'default'}
       />
     </div>

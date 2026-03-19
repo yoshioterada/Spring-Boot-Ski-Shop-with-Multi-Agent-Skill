@@ -1,8 +1,6 @@
 import { ArrowRight, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 
-import { buttonVariants } from '@/components/ui/button';
-
 import { ProductCard } from './product-card';
 
 import type { ProductResponse } from '@/types/api';
@@ -15,12 +13,17 @@ interface TrendingProduct {
 
 async function getTrending(): Promise<ProductResponse[]> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${process.env.PORT || '3001'}`;
     const res = await fetch(`${baseUrl}/api/dashboard/home`, {
       next: { revalidate: 300 },
     });
     if (!res.ok) return [];
     const data = await res.json();
+
+    // Use personalizedProducts (latest products) as trending
+    if (data.personalizedProducts && Array.isArray(data.personalizedProducts) && data.personalizedProducts.length > 0) {
+      return data.personalizedProducts as ProductResponse[];
+    }
 
     return (
       (data.trending?.products as TrendingProduct[] | undefined)?.map(
@@ -61,7 +64,7 @@ export async function TrendingSection() {
           <TrendingUp className="text-primary h-6 w-6" />
           <h2 className="text-3xl font-bold">トレンド商品</h2>
         </div>
-        <Link href="/catalog" className={buttonVariants({ variant: 'ghost', className: 'gap-1' })}>
+        <Link href="/catalog" className="inline-flex items-center gap-1 text-sm font-medium hover:underline">
           すべて見る
           <ArrowRight className="h-4 w-4" />
         </Link>

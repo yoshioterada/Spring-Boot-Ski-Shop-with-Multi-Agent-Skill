@@ -16,7 +16,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const body = await request.json().catch(() => ({}));
     const res = await fetch(`${PAYMENT_SERVICE_URL}/api/v1/admin/payments/${id}/refund`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}` },
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => null);

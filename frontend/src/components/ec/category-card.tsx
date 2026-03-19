@@ -14,7 +14,7 @@ interface CategoryCardProps {
 
 export function CategoryCard({ category }: CategoryCardProps) {
   return (
-    <Link href={`/catalog/${category.id}` as never}>
+    <Link href={`/catalog?category=${category.id}` as never}>
       <Card className="group hover:border-primary/30 overflow-hidden transition-all duration-300 hover:shadow-lg">
         <div className="from-primary/10 to-primary/5 relative flex aspect-[3/2] items-center justify-center bg-gradient-to-br">
           {category.imageUrl ? (

@@ -1,10 +1,12 @@
+import Link from 'next/link';
+
 import { CategoryCard } from './category-card';
 
 import type { CategoryResponse } from '@/types/api';
 
 async function getCategories(): Promise<CategoryResponse[]> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${process.env.PORT || '3001'}`;
     const res = await fetch(`${baseUrl}/api/dashboard/home`, {
       next: { revalidate: 300 },
     });
@@ -40,10 +42,10 @@ export async function CategorySection() {
 
 function PlaceholderCategories() {
   const placeholders = [
-    { id: '1', name: 'スキー板', description: 'オールマウンテンからレーシングまで', icon: '⛷️' },
-    { id: '2', name: 'スキーブーツ', description: '快適なフィット感を追求', icon: '🥾' },
-    { id: '3', name: 'ウェア', description: '高機能ジャケット&パンツ', icon: '🧥' },
-    { id: '4', name: 'アクセサリー', description: 'ゴーグル、グローブ、ヘルメット', icon: '🥽' },
+    { id: 'cat-ski', name: 'スキー板', description: 'オールマウンテンからレーシングまで', icon: '⛷️' },
+    { id: 'cat-boots', name: 'スキーブーツ', description: '快適なフィット感を追求', icon: '🥾' },
+    { id: 'cat-wear', name: 'ウェア', description: '高機能ジャケット&パンツ', icon: '🧥' },
+    { id: 'cat-goggles', name: 'アクセサリー', description: 'ゴーグル、グローブ、ヘルメット', icon: '🥽' },
   ];
 
   return (
@@ -54,16 +56,17 @@ function PlaceholderCategories() {
       </div>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {placeholders.map((cat) => (
-          <div
-            key={cat.id}
-            className="group bg-card hover:border-primary/30 rounded-lg border p-6 text-center transition-all hover:shadow-lg"
-          >
-            <div className="bg-primary/10 mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full text-3xl">
-              {cat.icon}
+          <Link key={cat.id} href={`/catalog?category=${cat.id}`}>
+            <div
+              className="group bg-card hover:border-primary/30 cursor-pointer rounded-lg border p-6 text-center transition-all hover:shadow-lg"
+            >
+              <div className="bg-primary/10 mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full text-3xl">
+                {cat.icon}
+              </div>
+              <h3 className="group-hover:text-primary font-semibold">{cat.name}</h3>
+              <p className="text-muted-foreground mt-1 text-sm">{cat.description}</p>
             </div>
-            <h3 className="group-hover:text-primary font-semibold">{cat.name}</h3>
-            <p className="text-muted-foreground mt-1 text-sm">{cat.description}</p>
-          </div>
+          </Link>
         ))}
       </div>
     </section>

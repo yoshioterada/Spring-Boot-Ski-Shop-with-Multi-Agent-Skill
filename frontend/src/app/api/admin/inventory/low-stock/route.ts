@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:8083';
+const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:8082';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     const threshold = searchParams.get('threshold') || '10';
     const res = await fetch(
       `${INVENTORY_SERVICE_URL}/api/v1/inventory/low-stock?threshold=${threshold}`,
+      { headers: { Authorization: `Bearer ${session.accessToken}` } },
     );
     const data = await res.json().catch(() => null);
     return NextResponse.json(data, { status: res.status });

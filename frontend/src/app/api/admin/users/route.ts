@@ -10,7 +10,9 @@ export async function GET(request: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { searchParams } = new URL(request.url);
-    const res = await fetch(`${USER_SERVICE_URL}/api/v1/admin/users?${searchParams.toString()}`);
+    const res = await fetch(`${USER_SERVICE_URL}/api/v1/admin/users?${searchParams.toString()}`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    });
     const data = await res.json().catch(() => null);
     return NextResponse.json(data, { status: res.status });
   } catch {

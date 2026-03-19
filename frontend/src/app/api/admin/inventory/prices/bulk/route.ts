@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:8083';
+const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:8082';
 
 export async function PUT(request: NextRequest) {
   try {
@@ -15,7 +15,7 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const res = await fetch(`${INVENTORY_SERVICE_URL}/api/v1/inventory/prices/bulk`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}` },
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => null);

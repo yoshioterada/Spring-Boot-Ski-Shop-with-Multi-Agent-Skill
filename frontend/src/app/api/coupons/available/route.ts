@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const COUPON_SERVICE_URL = process.env.COUPON_SERVICE_URL || 'http://localhost:8085';
+const COUPON_SERVICE_URL = process.env.COUPON_SERVICE_URL || 'http://localhost:8088';
 
 export async function GET() {
   try {

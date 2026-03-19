@@ -199,8 +199,12 @@ public class UserService {
         user.setRole(role);
         user = userProfileRepository.save(user);
 
-        eventPublisher.publish(DomainEvent.create("user.role_changed", "user-management-service",
-                new UserEventPayload(user.getId(), user.getEmail(), user.getFirstName(), user.getLastName())));
+        try {
+            eventPublisher.publish(DomainEvent.create("user.role_changed", "user-management-service",
+                    new UserEventPayload(user.getId(), user.getEmail(), user.getFirstName(), user.getLastName())));
+        } catch (Exception e) {
+            log.warn("Failed to publish role_changed event for user {}: {}", userId, e.getMessage());
+        }
 
         return toResponse(user);
     }

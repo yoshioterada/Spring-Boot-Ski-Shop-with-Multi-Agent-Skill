@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:8083';
+const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:8082';
 
 export async function GET(
   _request: NextRequest,
@@ -16,7 +16,9 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const res = await fetch(`${INVENTORY_SERVICE_URL}/api/v1/inventory/${productId}`);
+    const res = await fetch(`${INVENTORY_SERVICE_URL}/api/v1/inventory/${productId}`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    });
     const data = await res.json().catch(() => null);
     return NextResponse.json(data, { status: res.status });
   } catch {
@@ -38,7 +40,7 @@ export async function PUT(
     const body = await request.json();
     const res = await fetch(`${INVENTORY_SERVICE_URL}/api/v1/inventory/${productId}/stock`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}` },
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => null);

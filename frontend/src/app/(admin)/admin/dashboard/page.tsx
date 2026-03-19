@@ -250,7 +250,7 @@ export default function DashboardPage() {
   };
   const salesData = salesChartMap[chartRange];
 
-  const lowStockItems = data?.lowStock ?? fallbackLowStock;
+  const lowStockItems = Array.isArray(data?.lowStock) ? data.lowStock : (data?.lowStock?.content ?? fallbackLowStock);
   const lowStockAvailable = data?.lowStock !== null;
 
   const recentOrders = data?.recentOrders?.content ?? fallbackOrders;

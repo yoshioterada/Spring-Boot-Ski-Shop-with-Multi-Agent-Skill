@@ -29,12 +29,12 @@ const SORT_OPTIONS = [
 
 const CATEGORIES = [
   { id: '', label: '全て' },
-  { id: 'ski', label: 'スキー板' },
-  { id: 'boots', label: 'ブーツ' },
-  { id: 'wear', label: 'ウェア' },
-  { id: 'accessories', label: 'アクセサリー' },
-  { id: 'poles', label: 'ポール' },
-  { id: 'goggles', label: 'ゴーグル' },
+  { id: 'cat-ski', label: 'スキー板' },
+  { id: 'cat-boots', label: 'ブーツ' },
+  { id: 'cat-wear', label: 'ウェア' },
+  { id: 'cat-gloves', label: 'アクセサリー' },
+  { id: 'cat-poles', label: 'ポール' },
+  { id: 'cat-goggles', label: 'ゴーグル' },
 ];
 
 function CatalogContent() {

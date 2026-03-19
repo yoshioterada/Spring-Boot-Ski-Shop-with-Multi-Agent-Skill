@@ -104,7 +104,9 @@ export default function ProductDetailPage() {
     }
     addItem({
       productId: product.id,
+      productName: product.name,
       quantity,
+      unitPrice: product.salePrice ?? product.regularPrice,
     });
   };
 

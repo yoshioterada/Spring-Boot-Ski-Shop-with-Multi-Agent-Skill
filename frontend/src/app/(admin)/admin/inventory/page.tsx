@@ -66,12 +66,19 @@ interface InventoryItem {
   lastUpdated: string;
 }
 
-interface PagedInventory {
-  content: InventoryItem[];
-  totalElements: number;
-  totalPages: number;
-  number: number;
-  size: number;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapToInventoryItem(raw: any): InventoryItem {
+  return {
+    productId: raw.productId ?? raw.id ?? '',
+    productName: raw.productName ?? raw.name ?? '',
+    sku: raw.sku ?? '',
+    currentStock: raw.currentStock ?? raw.stockQuantity ?? 0,
+    reservedStock: raw.reservedStock ?? raw.reservedQuantity ?? 0,
+    availableStock: raw.availableStock ?? raw.availableQuantity ?? 0,
+    lowStockThreshold: raw.lowStockThreshold ?? 10,
+    status: raw.status ?? 'ACTIVE',
+    lastUpdated: raw.lastUpdated ?? raw.updatedAt ?? '',
+  };
 }
 
 interface LowStockItem {
@@ -172,10 +179,11 @@ export default function AdminInventoryPage() {
 
       const res = await fetch(`/api/admin/inventory?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch');
-      const data: PagedInventory = await res.json();
-      setItems(data.content ?? []);
-      setTotalElements(data.totalElements ?? 0);
-      setTotalPages(data.totalPages ?? 0);
+      const data = await res.json();
+      const content = (data.content ?? []).map(mapToInventoryItem);
+      setItems(content);
+      setTotalElements(data.page?.totalElements ?? data.totalElements ?? 0);
+      setTotalPages(data.page?.totalPages ?? data.totalPages ?? 0);
     } catch {
       setItems([]);
       toast.error('在庫一覧の取得に失敗しました');
@@ -189,7 +197,8 @@ export default function AdminInventoryPage() {
       const res = await fetch('/api/admin/inventory/low-stock?threshold=10');
       if (!res.ok) return;
       const data = await res.json();
-      setLowStockItems(Array.isArray(data) ? data : (data.content ?? []));
+      const raw = Array.isArray(data) ? data : (data.content ?? []);
+      setLowStockItems(raw.map(mapToInventoryItem));
     } catch {
       /* silently fail */
     }

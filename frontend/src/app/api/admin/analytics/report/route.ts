@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8088';
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8087';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const res = await fetch(`${AI_SERVICE_URL}/api/v1/analytics/report`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}` },
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => null);

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const ORDER_SERVICE_URL = process.env.ORDER_SERVICE_URL || 'http://localhost:8087';
+const ORDER_SERVICE_URL = process.env.ORDER_SERVICE_URL || 'http://localhost:8083';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,7 +13,9 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const res = await fetch(`${ORDER_SERVICE_URL}/api/v1/admin/orders?${searchParams.toString()}`);
+    const res = await fetch(`${ORDER_SERVICE_URL}/api/v1/admin/orders?${searchParams.toString()}`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    });
     const data = await res.json().catch(() => null);
     return NextResponse.json(data, { status: res.status });
   } catch {

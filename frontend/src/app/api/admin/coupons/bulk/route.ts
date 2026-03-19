@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const COUPON_SERVICE_URL = process.env.COUPON_SERVICE_URL || 'http://localhost:8085';
+const COUPON_SERVICE_URL = process.env.COUPON_SERVICE_URL || 'http://localhost:8088';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const res = await fetch(`${COUPON_SERVICE_URL}/api/v1/coupons/bulk`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}` },
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => null);
