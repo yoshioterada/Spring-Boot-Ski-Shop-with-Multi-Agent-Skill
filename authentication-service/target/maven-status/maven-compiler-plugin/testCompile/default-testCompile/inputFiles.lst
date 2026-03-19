@@ -1,0 +1,4 @@
+/home/runner/work/ski-shop-microservices/ski-shop-microservices/authentication-service/src/test/java/com/example/skishop/authentication/TestSecurityConfig.java
+/home/runner/work/ski-shop-microservices/ski-shop-microservices/authentication-service/src/test/java/com/example/skishop/authentication/controller/AuthControllerTest.java
+/home/runner/work/ski-shop-microservices/ski-shop-microservices/authentication-service/src/test/java/com/example/skishop/authentication/service/AuthServiceTest.java
+/home/runner/work/ski-shop-microservices/ski-shop-microservices/authentication-service/src/test/java/com/example/skishop/authentication/service/JwtTokenServiceTest.java

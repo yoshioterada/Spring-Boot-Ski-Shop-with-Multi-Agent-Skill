@@ -1,0 +1,4 @@
+com/example/skishop/authentication/service/AuthServiceTest.class
+com/example/skishop/authentication/service/JwtTokenServiceTest.class
+com/example/skishop/authentication/controller/AuthControllerTest.class
+com/example/skishop/authentication/TestSecurityConfig.class
