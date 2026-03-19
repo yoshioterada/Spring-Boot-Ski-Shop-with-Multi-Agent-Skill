@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{mail/layout/base :: layout(${subject}, ${baseUrl}, ~{::content})}">
+<body>
+<div th:fragment="content">
+    <p><span th:text="${firstName}">お客様</span> 様</p>
+    <p>メールアドレス変更の確認を行うため、以下のリンクをクリックしてください。</p>
+    <p>
+        <a th:href="${verifyUrl}" style="display:inline-block;padding:10px 16px;background-color:#0b5cab;color:#ffffff;text-decoration:none;border-radius:6px;">
+            メールアドレス変更を確認する
+        </a>
+    </p>
+</div>
+</body>
+</html>

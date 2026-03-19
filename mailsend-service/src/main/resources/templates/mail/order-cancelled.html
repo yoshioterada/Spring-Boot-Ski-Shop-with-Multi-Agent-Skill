@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{mail/layout/base :: layout(${subject}, ${baseUrl}, ~{::content})}">
+<body>
+<div th:fragment="content">
+    <p><span th:text="${recipientName}">お客様</span> 様</p>
+    <p>ご注文のキャンセルを受け付けました。</p>
+    <p>注文番号: <span th:text="${orderNumber}">ORD-XXXX</span></p>
+</div>
+</body>
+</html>

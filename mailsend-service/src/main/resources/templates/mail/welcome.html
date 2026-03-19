@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{mail/layout/base :: layout(${subject}, ${baseUrl}, ~{::content})}">
+<body>
+<div th:fragment="content">
+    <p><span th:text="${firstName}">お客様</span> 様</p>
+    <p>メールアドレスの確認が完了しました。Azure SkiShop へようこそ！</p>
+    <p>これからのお買い物をお楽しみください。</p>
+</div>
+</body>
+</html>

@@ -4,6 +4,7 @@ tools:
   - read
   - search
 user-invocable: false
+model: Claude Opus 4.6 (copilot)
 ---
 
 # performance-reviewer — パフォーマンスレビュー Agent

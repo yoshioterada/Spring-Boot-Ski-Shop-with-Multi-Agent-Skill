@@ -1,0 +1,49 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'api-gateway'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['api-gateway-service:8090']
+
+  - job_name: 'authentication-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['authentication-service:8080']
+
+  - job_name: 'user-management-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['user-management-service:8081']
+
+  - job_name: 'inventory-management-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['inventory-management-service:8082']
+
+  - job_name: 'payment-cart-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['payment-cart-service:8084']
+
+  - job_name: 'point-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['point-service:8085']
+
+  - job_name: 'sales-management-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['sales-management-service:8083']
+
+  - job_name: 'ai-support-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['ai-support-service:8087']
+
+  - job_name: 'coupon-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['coupon-service:8088']

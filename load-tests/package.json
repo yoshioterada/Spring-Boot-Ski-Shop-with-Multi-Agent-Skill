@@ -1,0 +1,14 @@
+{
+  "name": "skishop-load-tests",
+  "version": "1.0.0",
+  "description": "k6 load tests for SkiShop E-Commerce Microservices",
+  "scripts": {
+    "test:smoke": "k6 run --config config/smoke.json scripts/full-scenario.js",
+    "test:load": "k6 run --config config/load.json scripts/full-scenario.js",
+    "test:stress": "k6 run --config config/stress.json scripts/full-scenario.js",
+    "test:auth": "k6 run --config config/smoke.json scripts/auth-flow.js",
+    "test:browse": "k6 run --config config/smoke.json scripts/browse-products.js",
+    "test:cart": "k6 run --config config/smoke.json scripts/cart-order-flow.js",
+    "test:health": "k6 run scripts/health-check.js"
+  }
+}

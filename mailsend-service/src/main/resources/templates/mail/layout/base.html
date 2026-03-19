@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org"
+      th:fragment="layout(subject, baseUrl, content)">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title th:text="${subject}">SkiShop</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f6f7fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f6f7fb;padding:24px 0;">
+    <tr>
+        <td align="center">
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;">
+                <tr>
+                    <td style="background-color:#0b5cab;padding:16px 24px;color:#ffffff;">
+                        <div style="font-size:18px;font-weight:bold;">Azure SkiShop</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:24px;">
+                        <div th:replace="${content}"></div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:16px 24px;background-color:#f3f4f6;color:#6b7280;font-size:12px;">
+                        <div>© Azure SkiShop. All rights reserved.</div>
+                        <div><a th:href="${baseUrl}" style="color:#0b5cab;">Webサイト</a></div>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

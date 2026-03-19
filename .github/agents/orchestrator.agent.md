@@ -21,6 +21,7 @@ agents:
   - infra-ops-reviewer
   - audit-reviewer
 user-invocable: true
+model: Claude Opus 4.6 (copilot)
 ---
 
 # orchestrator — ステージゲート・オーケストレーター

@@ -6,6 +6,7 @@ tools:
   - execute
   - web
 user-invocable: true
+model: Claude Opus 4.6 (copilot)
 ---
 
 # oss-reviewer — OSS 審査 Agent

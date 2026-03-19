@@ -5,6 +5,7 @@ tools:
   - search
   - edit
 user-invocable: true
+model: Claude Opus 4.6 (copilot)
 ---
 
 # tech-lead — テックリード Agent

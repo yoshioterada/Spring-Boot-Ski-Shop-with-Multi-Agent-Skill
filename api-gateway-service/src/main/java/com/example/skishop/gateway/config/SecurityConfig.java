@@ -1,0 +1,65 @@
+package com.example.skishop.gateway.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
+import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+
+@Configuration
+@EnableWebFluxSecurity
+public class SecurityConfig {
+
+    @Bean
+    public ReactiveJwtDecoder reactiveJwtDecoder(@Value("${jwt.secret:}") String jwtSecret) {
+        if (jwtSecret == null || jwtSecret.isBlank()) {
+            throw new IllegalStateException("jwt.secret is required for API Gateway (set JWT_SECRET in .env)");
+        }
+
+        var secretKey = new SecretKeySpec(jwtSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        return NimbusReactiveJwtDecoder.withSecretKey(secretKey)
+                .macAlgorithm(MacAlgorithm.HS256)
+                .build();
+    }
+
+    @Bean
+    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+        http
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .authorizeExchange(exchanges -> exchanges
+                        // 公開エンドポイント（認証不要）
+                        .pathMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .pathMatchers("/v3/api-docs/**", "/swagger-ui/**", "/webjars/**").permitAll()
+                        .pathMatchers("/api/v1/auth/**").permitAll()
+                        .pathMatchers("/api/v1/products/**").permitAll()
+                        .pathMatchers("/api/v1/categories/**").permitAll()
+                        .pathMatchers("/api/v1/recommendations/**").permitAll()
+                        .pathMatchers("/api/v1/search/**").permitAll()
+                        .pathMatchers("/fallback/**").permitAll()
+                        // クーポン/キャンペーン: GET は公開、その他は認証必要
+                        .pathMatchers(HttpMethod.GET, "/api/v1/coupons/**").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/api/v1/campaigns/**").permitAll()
+                        // ADMIN/MANAGER 限定エンドポイント
+                        .pathMatchers("/api/v1/inventory/**").hasAnyRole("ADMIN", "MANAGER")
+                        .pathMatchers("/api/v1/reports/**").hasAnyRole("ADMIN", "MANAGER")
+                        .pathMatchers("/api/v1/analytics/**").hasAnyRole("ADMIN", "MANAGER")
+                        .pathMatchers("/api/v1/models/**").hasRole("ADMIN")
+                        .pathMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        // Actuator は ADMIN のみ
+                        .pathMatchers("/actuator/**").hasRole("ADMIN")
+                        // その他は認証必須
+                        .anyExchange().authenticated()
+                )
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}));
+
+        return http.build();
+    }
+}

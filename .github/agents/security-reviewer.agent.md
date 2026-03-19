@@ -4,8 +4,8 @@ tools:
   - read
   - search
   - execute
-model: o4-mini
 user-invocable: true
+model: Claude Opus 4.6 (copilot)
 ---
 
 # security-reviewer — セキュリティレビュー Agent

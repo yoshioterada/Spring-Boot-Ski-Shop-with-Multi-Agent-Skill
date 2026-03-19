@@ -1,0 +1,2 @@
+com.example.skishop.common.event.EventPublisherAutoConfiguration
+com.example.skishop.common.web.PageSerializationConfig

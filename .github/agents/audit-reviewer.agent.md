@@ -3,7 +3,7 @@ description: "監査・ガバナンスの観点でプロセス準拠チェック
 tools:
   - read
   - search
-model: o4-mini
+model: Claude Opus 4.6 (copilot)
 user-invocable: false
 ---
 

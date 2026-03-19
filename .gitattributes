@@ -1,0 +1,30 @@
+# LF 改行の強制（Windows 環境との互換性）
+* text=auto eol=lf
+
+# シェルスクリプト
+*.sh text eol=lf
+
+# SQL
+*.sql text eol=lf
+
+# YAML
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Properties
+*.properties text eol=lf
+
+# Markdown
+*.md text eol=lf
+
+# Docker
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+
+# Binary files
+*.jar binary
+*.class binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary

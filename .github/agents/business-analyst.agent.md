@@ -3,7 +3,8 @@ description: "ビジネス要件とユーザー価値の観点でレビューを
 tools:
   - read
   - search
-user-invocable: false
+user-invocable: true
+model: Claude Opus 4.6 (copilot)
 ---
 
 # business-analyst — ビジネスアナリスト Agent

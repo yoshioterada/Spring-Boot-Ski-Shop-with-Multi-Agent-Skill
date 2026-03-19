@@ -4,6 +4,7 @@ tools:
   - read
   - search
 user-invocable: false
+model: Claude Opus 4.6 (copilot)
 ---
 
 # ux-accessibility-reviewer — UX/アクセシビリティ Agent

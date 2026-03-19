@@ -3,7 +3,7 @@ description: "法規制・個人情報保護・契約管理の観点でレビュ
 tools:
   - read
   - search
-model: o4-mini
+model: Claude Opus 4.6 (copilot)
 user-invocable: false
 ---
 

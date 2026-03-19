@@ -1,0 +1,414 @@
+# =============================================================================
+# Ski Shop E-Commerce — Docker Compose
+# =============================================================================
+# 使い方:
+#   ./scripts/dev.sh infra   — DB + Kafka + 監視のみ起動（IDE 開発用）
+#   ./scripts/dev.sh up      — 全サービス起動（E2E テスト用）
+#   ./scripts/dev.sh down    — 全サービス停止
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Infrastructure Services
+# ---------------------------------------------------------------------------
+
+services:
+  # --- PostgreSQL（共有インスタンス — 6 DB） ---
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["infra", "app"]
+    container_name: skishop-postgres
+    command: ["postgres", "-c", "max_connections=200"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    networks:
+      - skishop-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # --- MongoDB ---
+  mongo:
+    image: mongo:7
+    profiles: ["infra", "app"]
+    container_name: skishop-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - skishop-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # --- Apache Kafka (KRaft mode — ZooKeeper 不要) ---
+  kafka:
+    image: apache/kafka:3.9.0
+    profiles: ["infra", "app"]
+    container_name: skishop-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      # KRaft モード
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # リスナー設定
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # トピック設定
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # ストレージ
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: skishop-local-kafka-cluster-id
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - skishop-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # --- Prometheus ---
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["infra", "app"]
+    container_name: skishop-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - skishop-network
+
+  # --- Grafana ---
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["infra", "app"]
+    container_name: skishop-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - skishop-network
+
+  # ---------------------------------------------------------------------------
+  # Application Services
+  # ---------------------------------------------------------------------------
+
+  # --- Authentication Service (PostgreSQL) ---
+  authentication-service:
+    build:
+      context: .
+      dockerfile: authentication-service/Dockerfile
+    profiles: ["app"]
+    container_name: skishop-auth
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/skishop_auth
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      KAFKA_BROKERS: kafka:9092
+      SPRING_PROFILES_ACTIVE: kafka
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+  # --- User Management Service (PostgreSQL) ---
+  user-management-service:
+    build:
+      context: .
+      dockerfile: user-management-service/Dockerfile
+    profiles: ["app"]
+    container_name: skishop-user
+    ports:
+      - "8081:8081"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/skishop_users
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      KAFKA_BROKERS: kafka:9092
+      SPRING_PROFILES_ACTIVE: kafka
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+  # --- Inventory Management Service (MongoDB) ---
+  inventory-management-service:
+    build:
+      context: .
+      dockerfile: inventory-management-service/Dockerfile
+    profiles: ["app"]
+    container_name: skishop-inventory
+    ports:
+      - "8082:8082"
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/skishop_inventory
+      JWT_SECRET: ${JWT_SECRET}
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      mongo:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+  # --- Sales Management Service (PostgreSQL) ---
+  sales-management-service:
+    build:
+      context: .
+      dockerfile: sales-management-service/Dockerfile
+    profiles: ["app"]
+    container_name: skishop-sales
+    ports:
+      - "8083:8083"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/skishop_sales
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      KAFKA_BROKERS: kafka:9092
+      SPRING_PROFILES_ACTIVE: kafka
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+  # --- Payment & Cart Service (PostgreSQL) ---
+  payment-cart-service:
+    build:
+      context: .
+      dockerfile: payment-cart-service/Dockerfile
+    profiles: ["app"]
+    container_name: skishop-payment
+    ports:
+      - "8084:8084"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/skishop_payment
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+  # --- Point Service (PostgreSQL) ---
+  point-service:
+    build:
+      context: .
+      dockerfile: point-service/Dockerfile
+    profiles: ["app"]
+    container_name: skishop-point
+    ports:
+      - "8085:8085"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/point_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+  # --- AI Support Service (MongoDB) ---
+  ai-support-service:
+    build:
+      context: .
+      dockerfile: ai-support-service/Dockerfile
+    profiles: ["app"]
+    container_name: skishop-ai
+    ports:
+      - "8087:8087"
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/skishop_ai
+      DB_URL: jdbc:postgresql://postgres:5432/skishop_ai
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-5}
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+  # --- Coupon Service (PostgreSQL) ---
+  coupon-service:
+    build:
+      context: .
+      dockerfile: coupon-service/Dockerfile
+    profiles: ["app"]
+    container_name: skishop-coupon
+    ports:
+      - "8088:8088"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/coupon_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+  # --- Mail Send Service (PostgreSQL + Kafka + Azure ACS) ---
+  mailsend-service:
+    build:
+      context: .
+      dockerfile: mailsend-service/Dockerfile
+    profiles: ["app"]
+    container_name: skishop-mail
+    ports:
+      - "8089:8089"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/skishop_mailsend
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      KAFKA_BROKERS: kafka:9092
+      AZURE_COMMUNICATION_ENDPOINT: ${AZURE_COMMUNICATION_ENDPOINT}
+      AZURE_COMMUNICATION_CONNECTION_STRING: ${AZURE_COMMUNICATION_CONNECTION_STRING}
+      MAIL_SENDER_ADDRESS: ${MAIL_SENDER_ADDRESS}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      USER_MANAGEMENT_SERVICE_URL: http://user-management-service:8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+  # --- API Gateway Service (ルーティングのみ) ---
+  api-gateway-service:
+    build:
+      context: .
+      dockerfile: api-gateway-service/Dockerfile
+    profiles: ["app"]
+    container_name: skishop-gateway
+    ports:
+      - "8090:8090"
+    environment:
+      AUTH_SERVICE_URL: http://authentication-service:8080
+      USER_SERVICE_URL: http://user-management-service:8081
+      INVENTORY_SERVICE_URL: http://inventory-management-service:8082
+      SALES_SERVICE_URL: http://sales-management-service:8083
+      PAYMENT_SERVICE_URL: http://payment-cart-service:8084
+      POINT_SERVICE_URL: http://point-service:8085
+      COUPON_SERVICE_URL: http://coupon-service:8088
+      AI_SERVICE_URL: http://ai-support-service:8087
+      MAIL_SERVICE_URL: http://mailsend-service:8089
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      authentication-service:
+        condition: service_started
+      user-management-service:
+        condition: service_started
+      inventory-management-service:
+        condition: service_started
+      sales-management-service:
+        condition: service_started
+      payment-cart-service:
+        condition: service_started
+      point-service:
+        condition: service_started
+      ai-support-service:
+        condition: service_started
+      coupon-service:
+        condition: service_started
+      mailsend-service:
+        condition: service_started
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  skishop-network:
+    driver: bridge
+    name: skishop-network
+
+# ---------------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------------
+volumes:
+  postgres-data:
+  mongo-data:
+  kafka-data:
+  prometheus-data:
+  grafana-data:

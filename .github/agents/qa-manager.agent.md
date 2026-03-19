@@ -5,6 +5,7 @@ tools:
   - search
   - execute
 user-invocable: true
+model: Claude Opus 4.6 (copilot)
 ---
 
 # qa-manager — QA マネージャー Agent
