@@ -30,6 +30,11 @@
         <module>ai-support-service</module>
         <module>api-gateway-service</module>
         <module>mailsend-service</module>
+        <!--
+          Multi-Agent System (ハイブリッド構成):
+          詳細は ai-agent-services/hybrid-deployment-design.md, ai-agent-services/agent-impl-plan.md 参照。
+        -->
+        <module>ai-agent-services</module>
     </modules>
 
     <properties>

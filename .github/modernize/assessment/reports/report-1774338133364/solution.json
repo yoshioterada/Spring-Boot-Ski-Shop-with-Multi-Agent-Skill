@@ -1,0 +1,13 @@
+{
+  "hardcoded-ip-address": "bare/remote-communication/hardcode-ip",
+  "CWE-477": "scan-and-resolve-cwe-vulnerabilities",
+  "CWE-681": "scan-and-resolve-cwe-vulnerabilities",
+  "CWE-682": "scan-and-resolve-cwe-vulnerabilities",
+  "CWE-1057": "scan-and-resolve-cwe-vulnerabilities",
+  "CWE-259": "scan-and-resolve-cwe-vulnerabilities",
+  "CWE-321": "scan-and-resolve-cwe-vulnerabilities",
+  "CWE-732": "scan-and-resolve-cwe-vulnerabilities",
+  "CWE-778": "scan-and-resolve-cwe-vulnerabilities",
+  "CWE-798": "scan-and-resolve-cwe-vulnerabilities",
+  "CWE-77": "scan-and-resolve-cwe-vulnerabilities"
+}

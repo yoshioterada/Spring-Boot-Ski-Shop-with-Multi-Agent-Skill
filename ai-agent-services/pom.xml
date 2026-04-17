@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.example.skishop</groupId>
+        <artifactId>skishop-parent</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>ai-agent-services-parent</artifactId>
+    <packaging>pom</packaging>
+    <name>Multi-Agent System (Hybrid)</name>
+    <description>
+        Multi-Agent System for ski-shop. Default: monolith (all 7 agents in agent-runtime-monolith on port 8100).
+        Optional: distributed (each agent as standalone Spring Boot app on ports 8100-8106).
+    </description>
+
+    <modules>
+        <!--
+          各サブモジュールは Phase 進行に合わせて順次有効化する（agent-impl-plan.md 参照）。
+          Phase 1: agent-common
+          Phase 2: weather-agent
+          Phase 3: customer-intent / equipment-matching / inventory-monitoring / dynamic-pricing / coupon-optimization
+          Phase 5: orchestrator-agent
+          Phase 6: agent-runtime-monolith
+        -->
+        <module>agent-common</module>
+        <module>weather-agent</module>
+        <module>customer-intent-agent</module>
+        <module>equipment-matching-agent</module>
+        <module>inventory-monitoring-agent</module>
+        <module>dynamic-pricing-agent</module>
+        <module>coupon-optimization-agent</module>
+        <module>orchestrator-agent</module>
+        <module>agent-runtime-monolith</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- 自モジュール間のバージョン統一 -->
+            <dependency>
+                <groupId>com.example.skishop</groupId>
+                <artifactId>agent-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.example.skishop</groupId>
+                <artifactId>weather-agent</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.example.skishop</groupId>
+                <artifactId>customer-intent-agent</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.example.skishop</groupId>
+                <artifactId>equipment-matching-agent</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.example.skishop</groupId>
+                <artifactId>inventory-monitoring-agent</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.example.skishop</groupId>
+                <artifactId>dynamic-pricing-agent</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.example.skishop</groupId>
+                <artifactId>coupon-optimization-agent</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.example.skishop</groupId>
+                <artifactId>orchestrator-agent</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

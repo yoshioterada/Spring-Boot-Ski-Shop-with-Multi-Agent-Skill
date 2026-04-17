@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.example.skishop</groupId>
+        <artifactId>ai-agent-services-parent</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+    <artifactId>agent-runtime-monolith</artifactId>
+    <packaging>jar</packaging>
+    <name>agent-runtime-monolith</name>
+    <description>Executable Spring Boot app that runs all 7 Agents in a single JVM (monolith mode)</description>
+
+    <dependencies>
+        <dependency><groupId>com.example.skishop</groupId><artifactId>agent-common</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.example.skishop</groupId><artifactId>common-lib</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.example.skishop</groupId><artifactId>weather-agent</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.example.skishop</groupId><artifactId>customer-intent-agent</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.example.skishop</groupId><artifactId>equipment-matching-agent</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.example.skishop</groupId><artifactId>inventory-monitoring-agent</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.example.skishop</groupId><artifactId>dynamic-pricing-agent</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.example.skishop</groupId><artifactId>coupon-optimization-agent</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.example.skishop</groupId><artifactId>orchestrator-agent</artifactId><version>${project.version}</version></dependency>
+
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
+        <dependency><groupId>org.springframework.ai</groupId><artifactId>spring-ai-starter-model-azure-openai</artifactId></dependency>
+        <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-registry-prometheus</artifactId></dependency>
+
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.springframework.security</groupId><artifactId>spring-security-test</artifactId><scope>test</scope></dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.example.skishop.agent.runtime.AgentRuntimeApplication</mainClass>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

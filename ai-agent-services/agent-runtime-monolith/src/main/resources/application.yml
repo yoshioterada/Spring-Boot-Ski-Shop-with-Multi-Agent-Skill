@@ -1,0 +1,56 @@
+server:
+  port: 8100
+
+spring:
+  application:
+    name: agent-runtime-monolith
+  autoconfigure:
+    exclude:
+      - com.example.skishop.common.event.EventPublisherAutoConfiguration
+  ai:
+    azure:
+      openai:
+        api-key: ${AZURE_OPENAI_API_KEY:}
+        endpoint: ${AZURE_OPENAI_ENDPOINT:}
+        chat:
+          options:
+            deployment-name: ${AZURE_OPENAI_DEPLOYMENT:gpt-4o}
+            temperature: 0.3
+
+agents:
+  deployment:
+    mode: ${AGENTS_DEPLOYMENT_MODE:monolith}
+  web:
+    enabled: ${AGENTS_WEB_ENABLED:true}
+
+services:
+  user-management:
+    base-url: ${USER_MANAGEMENT_SERVICE_URL:http://localhost:8081}
+  inventory:
+    base-url: ${INVENTORY_MANAGEMENT_SERVICE_URL:http://localhost:8082}
+  sales:
+    base-url: ${SALES_MANAGEMENT_SERVICE_URL:http://localhost:8083}
+  payment-cart:
+    base-url: ${PAYMENT_CART_SERVICE_URL:http://localhost:8084}
+  point:
+    base-url: ${POINT_SERVICE_URL:http://localhost:8085}
+  coupon:
+    base-url: ${COUPON_SERVICE_URL:http://localhost:8088}
+  internal-api-key: ${INTERNAL_API_KEY:}
+
+jwt:
+  secret: ${JWT_SECRET:change-me-in-production-please-use-strong-secret-key-256bit-minimum}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    com.example.skishop.agent: INFO
+    org.springframework.ai: INFO

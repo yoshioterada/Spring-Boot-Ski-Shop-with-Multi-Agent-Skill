@@ -1,0 +1,32 @@
+server:
+  port: 0
+
+spring:
+  ai:
+    azure:
+      openai:
+        api-key: test-key
+        endpoint: http://localhost:0/openai
+  autoconfigure:
+    exclude:
+      - com.example.skishop.common.event.EventPublisherAutoConfiguration
+      - org.springframework.ai.model.azure.openai.autoconfigure.AzureOpenAiChatAutoConfiguration
+      - org.springframework.ai.model.azure.openai.autoconfigure.AzureOpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.azure.openai.autoconfigure.AzureOpenAiImageAutoConfiguration
+      - org.springframework.ai.model.azure.openai.autoconfigure.AzureOpenAiAudioTranscriptionAutoConfiguration
+
+agents:
+  deployment:
+    mode: monolith
+  web:
+    enabled: true
+
+jwt:
+  secret: test-secret-key-for-jwt-authentication-must-be-at-least-256-bit-long-1234567890
+
+services:
+  internal-api-key: test-api-key
+  user-management:
+    base-url: http://localhost:8081
+  payment-cart:
+    base-url: http://localhost:8084
