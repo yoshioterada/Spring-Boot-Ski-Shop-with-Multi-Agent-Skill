@@ -112,33 +112,95 @@ public class OpenMeteoClient {
         return generateAlertsFromData(current);
     }
 
-    private GeoLocation geocode(String locationName) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> response = geocodingClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/search")
-                        .queryParam("name", locationName)
-                        .queryParam("count", 1)
-                        .queryParam("language", "ja")
-                        .queryParam("format", "json")
-                        .build())
-                .retrieve()
-                .body(Map.class);
+    /**
+     * 主要な国内スキーリゾート/地域のフォールバック座標。
+     * Open-Meteo の Geocoding API は日本の小規模リゾート名を解決できないことが多いため、
+     * 既知のリゾートはオフライン辞書で確実にヒットさせる。
+     */
+    private static final Map<String, GeoLocation> KNOWN_RESORTS = Map.ofEntries(
+            // 新潟
+            Map.entry("苗場", new GeoLocation(36.7878, 138.7917, "Naeba Ski Resort", "Japan")),
+            Map.entry("naeba", new GeoLocation(36.7878, 138.7917, "Naeba Ski Resort", "Japan")),
+            Map.entry("かぐら", new GeoLocation(36.8333, 138.8167, "Kagura Ski Resort", "Japan")),
+            Map.entry("kagura", new GeoLocation(36.8333, 138.8167, "Kagura Ski Resort", "Japan")),
+            Map.entry("湯沢", new GeoLocation(36.9342, 138.8147, "Yuzawa", "Japan")),
+            Map.entry("越後湯沢", new GeoLocation(36.9342, 138.8147, "Echigo-Yuzawa", "Japan")),
+            Map.entry("ガーラ湯沢", new GeoLocation(36.9486, 138.8133, "Gala Yuzawa", "Japan")),
+            Map.entry("妙高", new GeoLocation(36.9069, 138.1247, "Myoko Ski Area", "Japan")),
+            Map.entry("赤倉", new GeoLocation(36.8997, 138.1953, "Akakura Ski Resort", "Japan")),
+            // 長野
+            Map.entry("白馬", new GeoLocation(36.6981, 137.8623, "Hakuba", "Japan")),
+            Map.entry("hakuba", new GeoLocation(36.6981, 137.8623, "Hakuba", "Japan")),
+            Map.entry("八方尾根", new GeoLocation(36.6986, 137.8244, "Hakuba Happo-One", "Japan")),
+            Map.entry("志賀高原", new GeoLocation(36.7261, 138.5044, "Shiga Kogen", "Japan")),
+            Map.entry("野沢温泉", new GeoLocation(36.9233, 138.4400, "Nozawa Onsen", "Japan")),
+            // 北海道
+            Map.entry("ニセコ", new GeoLocation(42.8047, 140.6878, "Niseko", "Japan")),
+            Map.entry("niseko", new GeoLocation(42.8047, 140.6878, "Niseko", "Japan")),
+            Map.entry("ルスツ", new GeoLocation(42.7383, 140.8867, "Rusutsu Resort", "Japan")),
+            Map.entry("富良野", new GeoLocation(43.3422, 142.3811, "Furano", "Japan")),
+            Map.entry("トマム", new GeoLocation(43.0775, 142.6356, "Tomamu", "Japan")),
+            Map.entry("キロロ", new GeoLocation(43.0903, 140.8589, "Kiroro Resort", "Japan")),
+            Map.entry("札幌", new GeoLocation(43.0642, 141.3469, "Sapporo", "Japan")),
+            // その他主要都市
+            Map.entry("東京", new GeoLocation(35.6762, 139.6503, "Tokyo", "Japan")),
+            Map.entry("tokyo", new GeoLocation(35.6762, 139.6503, "Tokyo", "Japan"))
+    );
 
-        if (response == null) {
-            throw new IllegalArgumentException("場所が見つかりません: " + locationName);
+    /** デフォルトのフォールバック座標（東京）。 */
+    private static final GeoLocation FALLBACK_LOCATION =
+            new GeoLocation(35.6762, 139.6503, "Tokyo (fallback)", "Japan");
+
+    private GeoLocation geocode(String locationName) {
+        if (locationName == null || locationName.isBlank()) {
+            log.warn("Geocode: empty location, using fallback (Tokyo)");
+            return FALLBACK_LOCATION;
         }
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> results = (List<Map<String, Object>>) response.get("results");
-        if (results == null || results.isEmpty()) {
-            throw new IllegalArgumentException("場所が見つかりません: " + locationName);
+        // 1) 既知リゾート辞書で部分一致を試行
+        String normalized = locationName.toLowerCase().trim();
+        for (Map.Entry<String, GeoLocation> entry : KNOWN_RESORTS.entrySet()) {
+            String key = entry.getKey().toLowerCase();
+            if (normalized.contains(key) || locationName.contains(entry.getKey())) {
+                log.info("Geocode: matched known resort '{}' for input '{}'", entry.getValue().name(), locationName);
+                return entry.getValue();
+            }
         }
-        Map<String, Object> first = results.get(0);
-        return new GeoLocation(
-                ((Number) first.get("latitude")).doubleValue(),
-                ((Number) first.get("longitude")).doubleValue(),
-                (String) first.get("name"),
-                (String) first.getOrDefault("country", ""));
+        // 2) Open-Meteo Geocoding API を試行
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = geocodingClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/search")
+                            .queryParam("name", locationName)
+                            .queryParam("count", 5)
+                            .queryParam("language", "ja")
+                            .queryParam("format", "json")
+                            .build())
+                    .retrieve()
+                    .body(Map.class);
+
+            if (response != null) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> results = (List<Map<String, Object>>) response.get("results");
+                if (results != null && !results.isEmpty()) {
+                    // 日本の結果を優先
+                    Map<String, Object> first = results.stream()
+                            .filter(r -> "JP".equals(r.get("country_code")))
+                            .findFirst()
+                            .orElse(results.get(0));
+                    return new GeoLocation(
+                            ((Number) first.get("latitude")).doubleValue(),
+                            ((Number) first.get("longitude")).doubleValue(),
+                            (String) first.get("name"),
+                            (String) first.getOrDefault("country", ""));
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("Geocode API call failed for '{}': {}", locationName, ex.getMessage());
+        }
+        // 3) フォールバック（東京）
+        log.warn("Geocode: location '{}' not found, using fallback (Tokyo)", locationName);
+        return FALLBACK_LOCATION;
     }
 
     // ---------- パース処理 ----------

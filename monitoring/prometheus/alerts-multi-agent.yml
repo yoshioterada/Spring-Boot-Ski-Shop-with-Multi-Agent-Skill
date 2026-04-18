@@ -1,0 +1,51 @@
+groups:
+  - name: multi-agent-runtime
+    interval: 30s
+    rules:
+      # 5xx 率 > 5% を 5 分継続したら警告
+      - alert: AgentRuntime5xxRateHigh
+        expr: |
+          100 * sum by (uri) (
+            rate(http_server_requests_seconds_count{job="agent-runtime-monolith", status=~"5.."}[5m])
+          )
+          /
+          sum by (uri) (
+            rate(http_server_requests_seconds_count{job="agent-runtime-monolith"}[5m])
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: multi-agent
+        annotations:
+          summary: "agent-runtime の 5xx 率が 5% を超過しています ({{ $labels.uri }})"
+          description: |
+            uri={{ $labels.uri }} の 5xx 比率が {{ printf "%.2f" $value }}% です。
+            Worker / Orchestrator のログと Azure OpenAI の応答状況を確認してください。
+            Runbook: docs/runbook.md#multi-agent
+
+      # agent-runtime ダウン検知
+      - alert: AgentRuntimeDown
+        expr: up{job="agent-runtime-monolith"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: multi-agent
+        annotations:
+          summary: "agent-runtime-monolith がダウンしています"
+          description: "2 分以上 Prometheus からスクレイプ不可。コンテナログを確認: docker logs skishop-agent-runtime"
+
+      # Orchestrator p95 レイテンシが 30 秒超過 (LLM 応答が異常に遅い)
+      - alert: AgentRuntimeOrchestratorLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (
+              rate(http_server_requests_seconds_bucket{job="agent-runtime-monolith", uri=~"/api/v1/orchestrator/.*"}[10m])
+            )
+          ) > 30
+        for: 10m
+        labels:
+          severity: warning
+          component: multi-agent
+        annotations:
+          summary: "Orchestrator の p95 レイテンシが 30 秒を超過"
+          description: "Azure OpenAI のレート制限・サーキットブレーカー発火状況を確認してください。"

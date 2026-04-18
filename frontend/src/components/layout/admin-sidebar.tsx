@@ -9,10 +9,12 @@ import {
   Mail,
   Mountain,
   Package,
+  PackageSearch,
   ShoppingCart,
   Star,
   Tag,
   Ticket,
+  TrendingUp,
   Users,
   Warehouse,
 } from 'lucide-react';
@@ -47,6 +49,8 @@ const sidebarItems = [
   { name: t('admin.sidebar.mailLogs'), href: '/admin/mail-logs', icon: Mail },
   { name: t('admin.sidebar.analytics'), href: '/admin/analytics', icon: BarChart3 },
   { name: t('admin.sidebar.ai'), href: '/admin/ai', icon: Bot, adminOnly: true },
+  { name: '在庫監視エージェント', href: '/admin/agents/inventory', icon: PackageSearch, adminOnly: true },
+  { name: '動的価格エージェント', href: '/admin/agents/pricing', icon: TrendingUp, adminOnly: true },
 ];
 
 export function AdminSidebar() {

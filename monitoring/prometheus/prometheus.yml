@@ -2,6 +2,9 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+rule_files:
+  - "alerts-multi-agent.yml"
+
 scrape_configs:
   - job_name: 'api-gateway'
     metrics_path: '/actuator/prometheus'
@@ -47,3 +50,10 @@ scrape_configs:
     metrics_path: '/actuator/prometheus'
     static_configs:
       - targets: ['coupon-service:8088']
+
+  - job_name: 'agent-runtime-monolith'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['agent-runtime-monolith:8100']
+        labels:
+          component: multi-agent

@@ -392,3 +392,56 @@ curl -sf http://localhost:8083/actuator/health
 | `OPENAI_API_KEY` | ai-support | OpenAI API キー | Yes（AI 機能利用時） |
 
 > ⚠️ **注意**: 秘密情報は環境変数または外部シークレット管理サービス（Vault 等）で管理すること。ハードコード禁止。
+
+---
+
+## Multi-Agent Runtime トラブルシューティング {#multi-agent}
+
+`agent-runtime-monolith` (port 8100) は Phase 6 で導入された統合 LLM 実行環境であり、6 つの Worker Agent (weather / customer-intent / equipment-matching / inventory-monitoring / dynamic-pricing / coupon-optimization) と Orchestrator を 1 JVM 内で起動します。
+
+### 起動失敗時の調査手順
+
+1. **コンテナログを確認**
+   ```bash
+   docker logs --tail 200 skishop-agent-runtime
+   ```
+2. **Bean 衝突 / `@ConditionalOnProperty` の状態を確認**
+   - 起動時のログで `agents.deployment.mode=monolith` が反映されているか
+   - 各 Worker の `*SecurityConfig` Bean が登録されていないこと（モノリス時は無効化）
+   - 単一 `MonolithSecurityConfig` のみが Bean 化されていること
+3. **Azure OpenAI への接続確認**
+   ```bash
+   docker exec skishop-agent-runtime sh -c 'env | grep AZURE_OPENAI'
+   curl -i $AZURE_OPENAI_ENDPOINT/openai/deployments?api-version=2024-08-01-preview \
+        -H "api-key: $AZURE_OPENAI_API_KEY"
+   ```
+4. **下流サービスへの内部 API キー疎通確認**
+   ```bash
+   docker exec skishop-agent-runtime sh -c \
+     'curl -sf -H "X-Internal-Api-Key: $INTERNAL_API_KEY" -H "X-Caller-Service: orchestrator-agent" \
+       http://user-management-service:8081/actuator/health'
+   ```
+   401 が返る場合は `INTERNAL_API_KEY` が compose の各サービスで一致していないため、`docker compose down && docker compose up -d` で再起動する。
+
+### LocalWeatherInvoker / RemoteWeatherInvoker の切替確認
+
+| 起動モード | 環境変数 | 期待される Bean |
+|---|---|---|
+| モノリス | `AGENTS_DEPLOYMENT_MODE=monolith` (既定) | `LocalWeatherInvoker` (`@ConditionalOnBean(WeatherAgentService.class)` 成立) |
+| 分散 / weather standalone 起動側 | (同 JVM に WeatherAgentService あり) | `LocalWeatherInvoker` |
+| 分散 / equipment / pricing standalone 側 | weather モジュール依存なし | `RemoteWeatherInvoker` (HTTP 呼び出し) |
+
+確認コマンド:
+```bash
+docker exec skishop-agent-runtime sh -c \
+  'curl -s http://localhost:8100/actuator/beans | grep -iE "weatherInvoker"'
+```
+
+### よくあるエラーと対処
+
+| 症状 | 原因 | 対処 |
+|---|---|---|
+| `IllegalArgumentException: API key must not be blank` | `INTERNAL_API_KEY` 未設定 | `.env` に `INTERNAL_API_KEY=...` を設定して compose を再起動 |
+| Orchestrator が 401 返却 | フロントから JWT 未送信 | フロント側で `Authorization: Bearer <token>` を付与 |
+| `/api/v1/agents/**` が 404 | api-gateway が意図的にブロック中（仕様） | 内部呼び出し専用。外部公開不可 |
+| Tool 呼び出しがログに残らない | `agents.web.enabled=false` で Controller 無効化 | `AGENTS_WEB_ENABLED=true` を確認 |

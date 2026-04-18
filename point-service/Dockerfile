@@ -12,6 +12,16 @@ COPY coupon-service/pom.xml coupon-service/pom.xml
 COPY ai-support-service/pom.xml ai-support-service/pom.xml
 COPY api-gateway-service/pom.xml api-gateway-service/pom.xml
 COPY mailsend-service/pom.xml mailsend-service/pom.xml
+COPY ai-agent-services/pom.xml ai-agent-services/pom.xml
+COPY ai-agent-services/agent-common/pom.xml ai-agent-services/agent-common/pom.xml
+COPY ai-agent-services/weather-agent/pom.xml ai-agent-services/weather-agent/pom.xml
+COPY ai-agent-services/customer-intent-agent/pom.xml ai-agent-services/customer-intent-agent/pom.xml
+COPY ai-agent-services/equipment-matching-agent/pom.xml ai-agent-services/equipment-matching-agent/pom.xml
+COPY ai-agent-services/inventory-monitoring-agent/pom.xml ai-agent-services/inventory-monitoring-agent/pom.xml
+COPY ai-agent-services/dynamic-pricing-agent/pom.xml ai-agent-services/dynamic-pricing-agent/pom.xml
+COPY ai-agent-services/coupon-optimization-agent/pom.xml ai-agent-services/coupon-optimization-agent/pom.xml
+COPY ai-agent-services/orchestrator-agent/pom.xml ai-agent-services/orchestrator-agent/pom.xml
+COPY ai-agent-services/agent-runtime-monolith/pom.xml ai-agent-services/agent-runtime-monolith/pom.xml
 RUN --mount=type=cache,target=/root/.m2 \
     mvn dependency:go-offline -B -pl common-lib,point-service -am
 COPY common-lib/src common-lib/src

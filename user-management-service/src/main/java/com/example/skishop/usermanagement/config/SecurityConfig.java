@@ -1,5 +1,7 @@
 package com.example.skishop.usermanagement.config;
 
+import com.example.skishop.common.security.InternalApiKeyAuthenticationFilter;
+import com.example.skishop.common.security.InternalApiKeyAuthenticationFilter;
 import com.example.skishop.common.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -24,7 +26,15 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter) throws Exception {
+    public InternalApiKeyAuthenticationFilter internalApiKeyAuthenticationFilter(
+            @Value("${internal.api-key}") String apiKey) {
+        return new InternalApiKeyAuthenticationFilter(apiKey);
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http,
+                                            JwtAuthenticationFilter jwtFilter,
+                                            InternalApiKeyAuthenticationFilter internalFilter) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -34,6 +44,7 @@ public class SecurityConfig {
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(internalFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

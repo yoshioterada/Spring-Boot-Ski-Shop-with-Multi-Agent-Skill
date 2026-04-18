@@ -63,4 +63,14 @@ class UserManagementClientTest {
     void fallback_static_helper() {
         assertThat(UserManagementClient.fallback("uX").customerTier()).isEqualTo("BRONZE");
     }
+
+    @Test
+    void getUserProfile_returns_fallback_when_body_is_null() {
+        // 200 OK but body parses to null → profile == null branch
+        server.expect(requestTo("http://localhost:8081/api/v1/users/uNull/profile"))
+                .andRespond(withSuccess("null", MediaType.APPLICATION_JSON));
+        var p = client.getUserProfile("uNull", "tok");
+        assertThat(p.userId()).isEqualTo("uNull");
+        assertThat(p.customerTier()).isEqualTo("BRONZE");
+    }
 }

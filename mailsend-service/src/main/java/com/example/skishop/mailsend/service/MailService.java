@@ -19,6 +19,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -52,6 +53,7 @@ public class MailService {
     private final Counter retryCounter;
     private final Timer sendTimer;
 
+    @Autowired
     public MailService(MailLogRepository mailLogRepository,
                        TemplateService templateService,
                        AzureEmailSender azureEmailSender,

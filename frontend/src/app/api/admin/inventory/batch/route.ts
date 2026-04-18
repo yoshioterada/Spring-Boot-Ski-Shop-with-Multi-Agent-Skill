@@ -3,7 +3,47 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:8082';
+const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://localhost:8090';
+
+async function safeFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string> | undefined ?? {}),
+    Connection: 'close',
+  };
+  const merged: RequestInit = { ...init, headers, cache: 'no-store' };
+  let lastErr: unknown;
+  for (let i = 0; i < 2; i++) {
+    try {
+      return await fetch(url, merged);
+    } catch (e) {
+      lastErr = e;
+      const code = (e as { cause?: { code?: string } })?.cause?.code;
+      const transient =
+        code === 'UND_ERR_SOCKET' ||
+        code === 'ECONNRESET' ||
+        code === 'UND_ERR_CONNECT_TIMEOUT' ||
+        code === 'UND_ERR_HEADERS_TIMEOUT';
+      if (transient && i === 0) continue;
+      throw lastErr;
+    }
+  }
+  throw lastErr;
+}
+
+function normalizePage<T>(data: T): T {
+  if (data && typeof data === 'object' && 'content' in (data as object) && 'page' in (data as object)) {
+    const d = data as Record<string, unknown>;
+    const p = (d.page ?? {}) as Record<string, unknown>;
+    return {
+      ...(data as object),
+      totalElements: p.totalElements ?? 0,
+      totalPages: p.totalPages ?? 0,
+      size: p.size ?? 0,
+      number: p.number ?? 0,
+    } as T;
+  }
+  return data;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,13 +53,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const res = await fetch(`${INVENTORY_SERVICE_URL}/api/v1/inventory/batch-check`, {
+    const res = await safeFetch(`${API_GATEWAY_URL}/api/v1/inventory/batch-check`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}` },
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => null);
-    return NextResponse.json(data, { status: res.status });
+    return NextResponse.json(normalizePage(data ?? {}), { status: res.status });
   } catch {
     return NextResponse.json({ error: 'Failed to batch check inventory' }, { status: 500 });
   }

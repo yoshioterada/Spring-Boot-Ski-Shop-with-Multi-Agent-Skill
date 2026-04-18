@@ -93,6 +93,31 @@ public class UserService {
         return toResponse(user);
     }
 
+    /**
+     * Multi-Agent Orchestrator 向けの拡張プロファイル取得。
+     * customerTier / pointBalance は他サービス連携が未統合のため暫定スタブ値を返す。
+     */
+    @Transactional(readOnly = true)
+    public com.example.skishop.usermanagement.dto.UserProfileResponse getUserProfile(UUID userId) {
+        UserProfile user = findUserOrThrow(userId);
+        String displayName = ((user.getFirstName() == null ? "" : user.getFirstName()) + " "
+                + (user.getLastName() == null ? "" : user.getLastName())).trim();
+        if (displayName.isEmpty()) {
+            displayName = user.getEmail();
+        }
+        String skillLevel = userPreferenceRepository
+                .findByUserIdAndPrefKey(userId, "preferred_skill_level")
+                .map(p -> p.getPrefValue())
+                .orElse("INTERMEDIATE");
+        return new com.example.skishop.usermanagement.dto.UserProfileResponse(
+                userId,
+                displayName,
+                "STANDARD",
+                java.util.List.of(),
+                skillLevel,
+                0L);
+    }
+
     @Transactional
     public UserResponse updateUser(UUID userId, UpdateUserRequest request) {
         log.info("Updating user: {}", userId);
@@ -212,6 +237,14 @@ public class UserService {
     @Transactional(readOnly = true)
     public Page<UserResponse> listUsers(Pageable pageable) {
         return userProfileRepository.findAll(pageable).map(this::toResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<UserResponse> searchUsers(String keyword, Pageable pageable) {
+        if (keyword == null || keyword.isBlank()) {
+            return listUsers(pageable);
+        }
+        return userProfileRepository.searchByKeyword(keyword.trim(), pageable).map(this::toResponse);
     }
 
     // --- Preferences ---

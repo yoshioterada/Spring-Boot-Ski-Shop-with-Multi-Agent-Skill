@@ -36,6 +36,9 @@ public class RouteConfig {
     @Value("${app.services.mail-url:http://localhost:8089}")
     private String mailServiceUrl;
 
+    @Value("${app.services.orchestrator-url:http://localhost:8100}")
+    private String orchestratorServiceUrl;
+
     @Bean
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
         return builder.routes()
@@ -127,6 +130,28 @@ public class RouteConfig {
                                         .setFallbackUri("forward:/fallback/mail"))
                                 .retry(retryConfig -> retryConfig.setRetries(3)))
                         .uri(mailServiceUrl))
+                // Multi-Agent Orchestrator (公開 API)
+                .route("orchestrator-service", r -> r
+                        .path("/api/v1/orchestrator/**")
+                        .filters(f -> f
+                                .circuitBreaker(cb -> cb.setName("orchestratorCircuitBreaker")
+                                        .setFallbackUri("forward:/fallback/ai")))
+                        .uri(orchestratorServiceUrl))
+                // 管理者向け Worker エージェント API。
+                // /api/v1/admin/agents/(inventory|pricing|...) → orchestrator-service の /api/v1/agents/$1 にリライト。
+                // SecurityConfig の /api/v1/admin/** → ADMIN ロール限定で保護される。
+                .route("admin-agents-service", r -> r
+                        .path("/api/v1/admin/agents/**")
+                        .filters(f -> f
+                                .rewritePath("/api/v1/admin/agents/(?<segment>.*)", "/api/v1/agents/${segment}")
+                                .circuitBreaker(cb -> cb.setName("orchestratorCircuitBreaker")
+                                        .setFallbackUri("forward:/fallback/ai")))
+                        .uri(orchestratorServiceUrl))
+                // /api/v1/agents/** (Worker 直接呼び出し) は外部からアクセス禁止 → 404 にフォールバック
+                .route("agents-block", r -> r
+                        .path("/api/v1/agents/**")
+                        .filters(f -> f.setStatus(404))
+                        .uri("no://op"))
                 .build();
     }
 }

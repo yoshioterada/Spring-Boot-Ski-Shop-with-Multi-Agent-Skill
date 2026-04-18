@@ -52,6 +52,16 @@ public class UserController {
         return ResponseEntity.ok(userService.getUserById(id));
     }
 
+    /**
+     * Multi-Agent Orchestrator が利用するプロファイル取得 API。
+     * 内部 API キーで認証された ROLE_AGENT、または本人/ADMIN がアクセス可能。
+     */
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN') or #id == authentication.principal")
+    @GetMapping("/{id}/profile")
+    public ResponseEntity<UserProfileResponse> getUserProfile(@PathVariable UUID id) {
+        return ResponseEntity.ok(userService.getUserProfile(id));
+    }
+
     @PreAuthorize("#id == authentication.principal or hasRole('ADMIN')")
     @PutMapping("/{id}")
     public ResponseEntity<UserResponse> updateUser(@PathVariable UUID id,

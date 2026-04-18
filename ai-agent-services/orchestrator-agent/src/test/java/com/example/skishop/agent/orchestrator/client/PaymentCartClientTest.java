@@ -70,4 +70,26 @@ class PaymentCartClientTest {
     void config_constructor_handles_null_apikey() {
         assertThat(new PaymentCartClient("http://localhost:8084", null)).isNotNull();
     }
+
+    @Test
+    void buildCart_returns_empty_map_when_response_body_null() {
+        // 200 OK but body parses to null → result == null branch
+        server.expect(requestTo("http://localhost:8084/api/v1/cart/build"))
+                .andRespond(withSuccess("null", MediaType.APPLICATION_JSON));
+        Map<String, Object> r = client.buildCart("u1", "o3", "p1|板|1|10000",
+                BigDecimal.valueOf(0), BigDecimal.valueOf(500));
+        assertThat(r).isEmpty();
+    }
+
+    @Test
+    void parseCartItems_skips_blank_segments() {
+        // ; separators with empty / whitespace segments are filtered
+        var items = PaymentCartClient.parseCartItems(" ; p1|板|1|1000 ; ;");
+        assertThat(items).hasSize(1);
+    }
+
+    @Test
+    void config_constructor_with_explicit_apikey() {
+        assertThat(new PaymentCartClient("http://localhost:8084", "my-api-key")).isNotNull();
+    }
 }

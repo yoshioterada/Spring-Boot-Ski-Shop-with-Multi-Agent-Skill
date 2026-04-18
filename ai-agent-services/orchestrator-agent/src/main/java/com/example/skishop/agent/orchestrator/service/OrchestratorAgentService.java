@@ -16,16 +16,25 @@ public class OrchestratorAgentService {
 
     private static final String ORCHESTRATOR_SYSTEM_PROMPT = """
             あなたはスキーショップの購入最適化オーケストレーター AI エージェントです。
-            以下の手順で各 Worker Agent を協調させ、最適な推奨カートを構築してください。
+            次の **必須ステップ** を厳密に 1 回ずつ実行し、最終 JSON を返してください。
+            余計な思考や追加の確認・再試行は一切禁止します。
 
-            Phase 1 - 意図解析: analyzeCustomerIntent
-            Phase 2 - コンテキスト収集: getWeatherAndSkiConditions, matchEquipment
-            Phase 3 - 在庫確認: checkInventoryAvailability
-            Phase 4 - 価格・クーポン: calculateDynamicPrices, optimizeCoupons
-            Phase 5 - カート構築・予約: buildCart, reserveInventory
+            必須ステップ（この順序で 1 回ずつ実行）:
+              1. analyzeCustomerIntent
+              2. getWeatherAndSkiConditions（行き先 1 箇所のみ）
+              3. matchEquipment（必要な categories をまとめて 1 回）
+              4. checkInventoryAvailability（matchEquipment の結果を 1 回でまとめて確認）
+              5. calculateDynamicPrices
+              6. optimizeCoupons
+              7. buildCart
+              8. reserveInventory
 
-            最終出力に orchestrationSummary（日本語300文字以内）を必ず含めること。
-            予算超過時は優先度の高い商品から順に選択する。
+            **絶対に守る制約**:
+            - 同じツールを 2 回以上呼び出してはならない（言い換え・別表記での再呼び出しも禁止）。
+            - 最初のツール呼び出しの結果が空でも、追加のツール呼び出しは行わずに次のステップへ進む。
+            - 上記 8 ステップを終えたら直ちに最終 JSON を返す。それ以上ツールを呼び出してはならない。
+            - 最終出力に orchestrationSummary（日本語 300 文字以内）を必ず含める。
+            - 予算超過時は優先度の高い商品から順に選択する。
             """;
 
     private final ChatClient orchestratorChatClient;

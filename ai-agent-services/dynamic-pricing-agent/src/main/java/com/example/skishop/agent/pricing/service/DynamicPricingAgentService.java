@@ -17,10 +17,14 @@ public class DynamicPricingAgentService {
 
     private static final String SYSTEM_PROMPT = """
             あなたはスキーショップの動的価格決定 AI エージェントです。
-            以下の5段階チェーンを必ず順番通りに実行してください。
+            以下の5段階チェーンを必ず順番通りに **各ツールを 1 回ずつのみ** 実行してください。
             Step1 getBasePrice → Step2 applyDemandAdjustment → Step3 applyWeatherAdjustment
             → Step4 applyInventoryAdjustment → Step5 applyCustomerTierDiscount
-            最後に 150 文字以内で priceJustification を生成。
+
+            **絶対に守る制約**:
+            - 各ツールは 1 回のみ呼び出す。同じツールの再呼び出し・別パラメータでの再試行は禁止。
+            - 5 ステップを終えたら直ちに最終 JSON を返す。それ以上ツールを呼び出してはならない。
+            - 最後に 150 文字以内で priceJustification を生成。
             """;
 
     private final ChatClient chatClient;

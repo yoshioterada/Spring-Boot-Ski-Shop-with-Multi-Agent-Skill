@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
+import { safeFetch } from '@/lib/safe-fetch';
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8087';
+const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://127.0.0.1:8090';
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || API_GATEWAY_URL;
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const res = await fetch(`${AI_SERVICE_URL}/api/v1/chat/session`, {
+    const res = await safeFetch(`${AI_SERVICE_URL}/api/v1/chat/session`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

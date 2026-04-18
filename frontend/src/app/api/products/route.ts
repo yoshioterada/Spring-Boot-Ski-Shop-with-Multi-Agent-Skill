@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
-const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:8082';
+import { safeFetch } from '@/lib/safe-fetch';
+
+const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://127.0.0.1:8090';
+const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || API_GATEWAY_URL;
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -22,12 +25,11 @@ export async function GET(request: NextRequest) {
     const endpoint = categoryId
       ? `${INVENTORY_SERVICE_URL}/api/v1/products/category/${encodeURIComponent(categoryId)}?${params.toString()}`
       : `${INVENTORY_SERVICE_URL}/api/v1/products?${params.toString()}`;
-    const res = await fetch(endpoint, {
+    const res = await safeFetch(endpoint, {
       headers: {
         'Content-Type': 'application/json',
         'X-Request-Id': crypto.randomUUID(),
       },
-      cache: 'no-store',
     });
 
     const data = await res.json();

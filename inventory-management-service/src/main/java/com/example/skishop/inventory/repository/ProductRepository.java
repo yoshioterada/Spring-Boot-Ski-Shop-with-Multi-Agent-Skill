@@ -22,6 +22,6 @@ public interface ProductRepository extends MongoRepository<Product, String> {
 
     Page<Product> findByNameContainingIgnoreCaseOrBrandContainingIgnoreCase(String name, String brand, Pageable pageable);
 
-    @Query("{ 'status': 'ACTIVE', 'availableQuantity': { $gte: 0, $lte: ?0 } }")
+    @Query("{ 'status': 'ACTIVE', 'stockQuantity': { $gte: 0, $lte: ?0 } }")
     Page<Product> findLowStockProducts(int threshold, Pageable pageable);
 }

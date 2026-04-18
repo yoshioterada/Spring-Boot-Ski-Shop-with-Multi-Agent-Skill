@@ -26,10 +26,20 @@ public class CustomerIntentAgentService {
             7. 希望商品カテゴリ
             8. 購入・レンタルの別
 
-            ツール呼び出し手順:
+            ツール呼び出し手順（**各ツールは 1 回のみ**）:
             1. getUserPurchaseHistory でユーザー履歴を確認
             2. validateAndFillConstraints で制約を整理
             3. 200 文字以内の intentSummary を生成
+
+            **出力 JSON のスキーマ重要事項**:
+            primaryIntent フィールドは必ず以下のいずれかの形式で出力すること
+            （type プロパティでカテゴリを判別する）:
+              - {"type":"PURCHASE","productCategory":"スキー板"}
+              - {"type":"RENTAL","productCategory":"スキー板","durationDays":3}
+              - {"type":"ADVICE","topic":"装備選び"}
+              - {"type":"SUPPORT","issueType":"返品"}
+            "category" や "requestedProductCategories" のような独自プロパティは禁止。
+            必ず "type" を含めること。
             """;
 
     private final ChatClient chatClient;

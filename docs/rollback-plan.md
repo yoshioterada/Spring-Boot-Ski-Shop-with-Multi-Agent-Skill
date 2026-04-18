@@ -189,3 +189,61 @@ kubectl set image deployment/authentication-service \
 - [ ] 全サービスロールバック (シナリオ C)
 - [ ] ロールバック後の E2E テスト実行
 - [ ] ロールバック所要時間の計測 (目標: 5 分以内)
+
+---
+
+## 分散構成 → モノリス回帰手順
+
+Phase 9 の standalone 構成（例: `weather-standalone:8101`, `pricing-standalone:8102` を別コンテナで運用）から、Phase 6 の `agent-runtime-monolith:8100` 単一プロセス運用に戻す手順です。
+
+### 前提
+
+- 全 Worker 機能は agent-runtime-monolith に同梱されているため、データ移行は不要
+- 切替に必要なのは「ルーティング先の URL 環境変数」と「standalone コンテナの停止」のみ
+- ロールバック所要時間: 約 3 分（API ダウンタイムは 10 秒程度）
+
+### 手順
+
+1. **トラフィック逃がし**
+   - api-gateway 側の `/api/v1/orchestrator/**` ルート先 (`ORCHESTRATOR_SERVICE_URL`) が `http://agent-runtime-monolith:8100` を指していることを確認
+   ```bash
+   docker exec skishop-gateway sh -c 'env | grep ORCHESTRATOR_SERVICE_URL'
+   ```
+
+2. **agent-runtime-monolith の起動確認**
+   ```bash
+   docker compose up -d agent-runtime-monolith
+   ./scripts/health-check.sh
+   ```
+   `agent-runtime-monolith:8100 UP` を確認
+
+3. **standalone コンテナの停止**
+   ```bash
+   docker compose -f docker-compose.distributed.yml stop weather-standalone pricing-standalone
+   ```
+
+4. **環境変数を monolith モードに戻す** (agent-runtime-monolith)
+   ```bash
+   docker compose exec agent-runtime-monolith sh -c \
+     'env AGENTS_DEPLOYMENT_MODE=monolith env | grep AGENTS_'
+   ```
+   既に compose 上で `AGENTS_DEPLOYMENT_MODE=monolith` (既定) が設定されているため、再起動だけで反映:
+   ```bash
+   docker compose restart agent-runtime-monolith
+   ```
+
+5. **検証 (E2E)**
+   ```bash
+   k6 run --vus 1 --iterations 1 load-tests/scripts/orchestrator-e2e.js
+   ```
+
+6. **standalone コンテナの完全削除（任意）**
+   ```bash
+   docker compose -f docker-compose.distributed.yml down weather-standalone pricing-standalone
+   ```
+
+### 注意事項
+
+- **Bean の切替は `@ConditionalOnProperty` ベース**: モノリス起動時は各 Worker `*SecurityConfig` が無効化され、`MonolithSecurityConfig` 1 つに集約される。`distributed` プロパティ値が compose に残っていないか必ず確認すること。
+- **`LocalWeatherInvoker` 自動復活**: モノリス起動時は `WeatherAgentService` Bean が同 JVM に存在するため `LocalWeatherInvoker` が選択される（`RemoteWeatherInvoker` は `@ConditionalOnProperty(distributed)` で除外）。
+- **DB / Kafka は無関係**: Multi-Agent はステートレスなので、永続データのロールバックは不要。

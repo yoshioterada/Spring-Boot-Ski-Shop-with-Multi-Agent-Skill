@@ -19,6 +19,7 @@
 - [ローカル開発環境](#ローカル開発環境)
   - [前提条件](#前提条件)
   - [セットアップ手順](#セットアップ手順)
+  - [Azure Communication Services（メール送信）のセットアップ](#azure-communication-servicesメール送信のセットアップ)
   - [開発モード](#開発モード)
   - [動作確認](#動作確認)
 - [本番環境（Azure）](#本番環境azure)
@@ -173,6 +174,185 @@ mvn clean package -DskipTests -Djacoco.skip=true -T 4
 ./scripts/dev.sh infra
 ```
 
+### Azure Communication Services（メール送信）のセットアップ
+
+`mailsend-service` は Azure Communication Services (ACS) Email を利用して通知メールを送信します。
+ACS リソースを未作成のまま `docker compose --profile app up` を実行すると、以下の WARN が表示され、メール送信機能が動作しません。
+
+```text
+WARN: The "AZURE_COMMUNICATION_ENDPOINT" variable is not set. Defaulting to a blank string.
+WARN: The "AZURE_COMMUNICATION_CONNECTION_STRING" variable is not set. Defaulting to a blank string.
+WARN: The "MAIL_SENDER_ADDRESS" variable is not set. Defaulting to a blank string.
+```
+
+以下の手順で Azure 上に必要なリソースを作成し、`.env` に接続情報を設定します。
+
+#### 前提
+
+- Azure CLI（`az`）がインストール済みで `az login` 済み
+- Azure サブスクリプションへのリソース作成権限（Contributor 以上）
+- 作成先のリソースグループが存在すること（無い場合は `az group create` で作成）
+
+#### 1. Azure CLI 拡張機能のインストール
+
+```bash
+# communication 拡張機能を追加（既にインストール済みなら警告のみ）
+az extension add --name communication --yes
+az extension show --name communication --query version -o tsv
+```
+
+#### 2. リソースプロバイダーの登録
+
+サブスクリプションで初めて ACS を利用する場合、`Microsoft.Communication` プロバイダーの登録が必須です（数分かかります）。
+
+```bash
+SUB=<your-subscription-id>
+
+az provider register \
+  --namespace Microsoft.Communication \
+  --subscription "$SUB" \
+  --wait
+
+# Registered になっていることを確認
+az provider show -n Microsoft.Communication --subscription "$SUB" \
+  --query registrationState -o tsv
+```
+
+#### 3. ACS リソースの作成
+
+ACS は次の 3 階層で構成されます。順番に作成してください。
+
+| 順序 | リソース種別 | 役割 |
+|------|------------|------|
+| ① | `Microsoft.Communication/emailServices` | メールサービス（データ保管リージョンを保持） |
+| ② | `.../emailServices/domains` | 送信元ドメイン（Azure Managed Domain or Customer Managed Domain） |
+| ③ | `Microsoft.Communication/communicationServices` | ACS 本体（Email Domain にリンクして送信機能を有効化） |
+
+```bash
+# 変数定義
+SUB=<your-subscription-id>
+RG=rg-yoshio-test                    # 利用するリソースグループ名
+EMAIL_SVC=skishop-email-comm         # ① Email Service 名
+ACS_NAME=skishop-acs                 # ③ Communication Service 名
+DATA_LOC=japan                       # データ保管リージョン（japan / unitedstates / europe など）
+
+# ① Email Communication Service を作成
+az communication email create \
+  --name "$EMAIL_SVC" \
+  --resource-group "$RG" \
+  --subscription "$SUB" \
+  --location global \
+  --data-location "$DATA_LOC"
+
+# ② Azure Managed Domain を作成（無料・即時 Verified、1 日 100 通の制限あり）
+az communication email domain create \
+  --domain-name AzureManagedDomain \
+  --email-service-name "$EMAIL_SVC" \
+  --resource-group "$RG" \
+  --subscription "$SUB" \
+  --location global \
+  --domain-management AzureManaged
+
+# 送信元ドメイン（fromSenderDomain）を取得
+DOMAIN_ID=$(az communication email domain show \
+  --domain-name AzureManagedDomain \
+  --email-service-name "$EMAIL_SVC" \
+  --resource-group "$RG" \
+  --subscription "$SUB" \
+  --query id -o tsv)
+
+SENDER_DOMAIN=$(az communication email domain show \
+  --domain-name AzureManagedDomain \
+  --email-service-name "$EMAIL_SVC" \
+  --resource-group "$RG" \
+  --subscription "$SUB" \
+  --query fromSenderDomain -o tsv)
+
+# ③ Communication Service を作成し、Email Domain をリンク
+az communication create \
+  --name "$ACS_NAME" \
+  --resource-group "$RG" \
+  --subscription "$SUB" \
+  --location global \
+  --data-location "$DATA_LOC" \
+  --linked-domains "$DOMAIN_ID"
+```
+
+> **本番環境向け**: 独自ドメインを使う場合は `--domain-management CustomerManaged` を指定し、DNS に TXT/CNAME レコード（SPF・DKIM・DMARC）を登録して `az communication email domain initiate-verification` で検証してください。
+
+#### 4. 接続情報の取得
+
+```bash
+# エンドポイント
+ENDPOINT=$(az communication show \
+  --name "$ACS_NAME" \
+  --resource-group "$RG" \
+  --subscription "$SUB" \
+  --query "hostName" -o tsv)
+ENDPOINT="https://${ENDPOINT}/"
+
+# 接続文字列（プライマリ）
+CONNECTION_STRING=$(az communication list-key \
+  --name "$ACS_NAME" \
+  --resource-group "$RG" \
+  --subscription "$SUB" \
+  --query primaryConnectionString -o tsv)
+
+# 送信元アドレス（Azure Managed Domain の場合）
+SENDER_ADDRESS="DoNotReply@${SENDER_DOMAIN}"
+
+echo "AZURE_COMMUNICATION_ENDPOINT=${ENDPOINT}"
+echo "AZURE_COMMUNICATION_CONNECTION_STRING=${CONNECTION_STRING}"
+echo "MAIL_SENDER_ADDRESS=${SENDER_ADDRESS}"
+```
+
+#### 5. `.env` への設定
+
+取得した値を `.env` に追記します。
+
+```bash
+cat >> .env << EOF
+
+# Azure Communication Services (ACS)
+AZURE_COMMUNICATION_ENDPOINT=${ENDPOINT}
+AZURE_COMMUNICATION_CONNECTION_STRING=${CONNECTION_STRING}
+MAIL_SENDER_ADDRESS=${SENDER_ADDRESS}
+EOF
+```
+
+`.env` で参照される環境変数と利用箇所:
+
+| 環境変数 | 参照ファイル | 用途 |
+|---------|------------|------|
+| `AZURE_COMMUNICATION_ENDPOINT` | `mailsend-service/src/main/resources/application.properties` | ACS REST エンドポイント URL |
+| `AZURE_COMMUNICATION_CONNECTION_STRING` | 同上 | ACS 接続文字列（`accesskey` を含む） |
+| `MAIL_SENDER_ADDRESS` | 同上 | 送信元メールアドレス（`From`） |
+
+#### 6. 動作確認
+
+```bash
+# 環境変数を読み込んで Docker Compose を起動（WARN が消えれば成功）
+set -a && source .env && set +a
+docker compose --profile app up -d mail
+docker logs -f skishop-mail
+```
+
+#### セキュリティ上の注意
+
+- ⚠ **`.env` は絶対にコミットしないでください**（`.gitignore` に登録済みであることを確認）。
+- 本番環境では接続文字列を **Azure Key Vault** に格納し、`@Value("${...}")` 経由でアプリへ注入してください。
+- Azure Managed Domain は開発・検証用途向けです（1 日 100 通、レート制限あり）。本番では Customer Managed Domain を利用してください。
+- アクセスキーをローテーションする場合は `az communication regenerate-key --key-type primary` を実行し、`.env` を更新してください。
+
+#### クリーンアップ（不要になった場合）
+
+```bash
+az communication delete --name "$ACS_NAME" --resource-group "$RG" --subscription "$SUB" --yes
+az communication email domain delete --domain-name AzureManagedDomain \
+  --email-service-name "$EMAIL_SVC" --resource-group "$RG" --subscription "$SUB" --yes
+az communication email delete --name "$EMAIL_SVC" --resource-group "$RG" --subscription "$SUB" --yes
+```
+
 ### 開発モード
 
 3 つの開発モードを用途に応じて選択:
@@ -198,22 +378,152 @@ mvn clean package -DskipTests -Djacoco.skip=true -T 4
 | Prometheus | `localhost` | 9090 |
 | Grafana | `localhost` | 3000 |
 
-#### モード B: 全コンテナ起動（E2E テスト向け）
+#### モード B: 全コンテナ起動（E2E テスト・統合検証向け）
 
-全 9 サービス + インフラを Docker で起動する。
+全 11 サービス（マイクロサービス 9 + API Gateway + Agent Runtime）+ インフラを Docker Compose で起動する。
+
+##### 1. 事前準備
+
+`.env` ファイルが用意され、以下の値が設定されていること:
+
+- `DB_PASSWORD`, `JWT_SECRET`（必須）
+- `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT_NAME`（AI 機能を使う場合）
+- `AZURE_COMMUNICATION_ENDPOINT`, `AZURE_COMMUNICATION_CONNECTION_STRING`, `MAIL_SENDER_ADDRESS`（メール送信を使う場合 — 上の節を参照）
+
+> ⚠ **`.env` の値に `;` `#` `空白` などのシェルメタ文字を含む場合は必ずダブルクオートで囲んでください。**
+> 例: `AZURE_COMMUNICATION_CONNECTION_STRING="endpoint=https://...;accesskey=..."`
+> （囲まないと `source .env` 時に `;` 以降が切り捨てられ、`'key' cannot be null` 等の起動失敗の原因になります）
+
+##### 2. ホスト側のポート競合チェック
+
+下表のポートがホスト側で他プロセスにより使用されていないことを確認します。
+
+| ポート | サービス |
+|------|---------|
+| 5432 | PostgreSQL |
+| 27017 | MongoDB |
+| 9092 | Kafka |
+| 9090 | Prometheus |
+| 3000 | Grafana |
+| 8080 | authentication-service |
+| 8081 | user-management-service |
+| 8082 | inventory-management-service |
+| 8083 | sales-management-service |
+| 8084 | payment-cart-service |
+| 8085 | point-service |
+| 8087 | ai-support-service |
+| 8088 | coupon-service |
+| 8089 | mailsend-service |
+| 8090 | api-gateway-service |
+| 8100 | agent-runtime-monolith |
 
 ```bash
-# 全サービス起動（ビルド + 起動）
-./scripts/dev.sh build   # Docker イメージ構築
-./scripts/dev.sh up      # 全サービス起動 + ヘルスチェック
+# 競合確認（出力があれば該当 PID を停止）
+for p in 5432 27017 9092 9090 3000 8080 8081 8082 8083 8084 8085 8087 8088 8089 8090 8100; do
+  lsof -nP -iTCP:"$p" -sTCP:LISTEN 2>/dev/null | tail -n +2
+done
 ```
+
+##### 3. ビルド
+
+```bash
+# Maven マルチモジュールを一括ビルド（初回 / コード変更後）
+mvn clean package -DskipTests -Djacoco.skip=true -T 4
+
+# Docker イメージをビルド
+set -a && source .env && set +a
+docker compose --profile app build
+```
+
+##### 4. 全サービス起動
+
+```bash
+set -a && source .env && set +a
+docker compose --profile app up -d
+
+# 起動完了まで待機（おおよそ 60〜90 秒）
+sleep 90
+
+# 全コンテナの状態を確認（全て healthy であること）
+docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep skishop
+```
+
+期待される出力（16 コンテナ全て healthy / Up）:
+
+```text
+skishop-gateway         Up (healthy)   0.0.0.0:8090->8090/tcp
+skishop-agent-runtime   Up (healthy)   0.0.0.0:8100->8100/tcp
+skishop-auth            Up (healthy)   0.0.0.0:8080->8080/tcp
+skishop-user            Up (healthy)   0.0.0.0:8081->8081/tcp
+skishop-inventory       Up (healthy)   0.0.0.0:8082->8082/tcp
+skishop-sales           Up (healthy)   0.0.0.0:8083->8083/tcp
+skishop-payment         Up (healthy)   0.0.0.0:8084->8084/tcp
+skishop-point           Up (healthy)   0.0.0.0:8085->8085/tcp
+skishop-ai              Up (healthy)   0.0.0.0:8087->8087/tcp
+skishop-coupon          Up (healthy)   0.0.0.0:8088->8088/tcp
+skishop-mail            Up (healthy)   0.0.0.0:8089->8089/tcp
+skishop-postgres        Up (healthy)   0.0.0.0:5432->5432/tcp
+skishop-mongo           Up (healthy)   0.0.0.0:27017->27017/tcp
+skishop-kafka           Up (healthy)   0.0.0.0:9092->9092/tcp
+skishop-prometheus      Up             0.0.0.0:9090->9090/tcp
+skishop-grafana         Up             0.0.0.0:3000->3000/tcp
+```
+
+##### 5. 個別サービスの再起動
+
+特定サービスだけビルドして反映:
+
+```bash
+# サービス名は docker-compose.yml の service キー（末尾 -service 含む）
+set -a && source .env && set +a
+docker compose --profile app build mailsend-service
+docker compose --profile app up -d mailsend-service
+
+# ログ確認
+docker logs --tail 50 -f skishop-mail
+```
+
+| サービスキー（`docker compose` 用） | コンテナ名 |
+|-----------------------------------|-----------|
+| `authentication-service` | `skishop-auth` |
+| `user-management-service` | `skishop-user` |
+| `inventory-management-service` | `skishop-inventory` |
+| `sales-management-service` | `skishop-sales` |
+| `payment-cart-service` | `skishop-payment` |
+| `point-service` | `skishop-point` |
+| `coupon-service` | `skishop-coupon` |
+| `ai-support-service` | `skishop-ai` |
+| `mailsend-service` | `skishop-mail` |
+| `api-gateway-service` | `skishop-gateway` |
+| `agent-runtime-monolith` | `skishop-agent-runtime` |
+
+##### 6. 停止 / クリーンアップ
+
+```bash
+# 停止（コンテナ削除、ボリュームは保持）
+docker compose --profile app down
+
+# データも含めて完全削除（⚠ DB データ消失）
+docker compose --profile app down -v
+```
+
+##### よくある失敗と対処
+
+| 症状 | 原因 | 対処 |
+|------|------|------|
+| `Bind for 0.0.0.0:<port> failed: port is already allocated` | ホスト側で別プロセスが該当ポートを LISTEN | `lsof -nP -iTCP:<port> -sTCP:LISTEN` で特定し停止／コンテナなら `docker rm -f <name>` |
+| `skishop-mail` が `Restarting`、ログに `'key' cannot be null` | `.env` の接続文字列がクオートされておらず `;` で truncate | `AZURE_COMMUNICATION_CONNECTION_STRING="..."` のようにダブルクオートで囲む |
+| `agent-runtime-monolith` 起動時に Azure OpenAI 認証エラー | `AZURE_OPENAI_*` 環境変数未設定 / 値誤り | `.env` の値を再確認し `docker compose up -d agent-runtime-monolith` で再起動 |
+| `docker-compose` が `no such service: <name>` を返す | サービスキー名は末尾 `-service` を含む | 上記の対応表を参照（例: `mail` ではなく `mailsend-service`） |
+| 古い `welcome-to-docker` 等のサンプルコンテナがポートを占有 | Docker Desktop の初回起動コンテナが残存 | `docker rm -f welcome-to-docker` |
 
 #### モード C: 部分起動
 
 全サービスを Docker で起動し、特定のサービスだけ IDE に切り替える。
 
 ```bash
-./scripts/dev.sh up
+set -a && source .env && set +a
+docker compose --profile app up -d
 
 # 特定サービスを止めて IDE で起動
 docker compose stop authentication-service
@@ -266,6 +576,8 @@ curl http://localhost:8084/actuator/health   # payment
 curl http://localhost:8085/actuator/health   # point
 curl http://localhost:8087/actuator/health   # ai-support
 curl http://localhost:8088/actuator/health   # coupon
+curl http://localhost:8089/actuator/health   # mailsend
+curl http://localhost:8100/actuator/health   # agent-runtime-monolith
 
 # 3. 監視ダッシュボード
 # Prometheus:  http://localhost:9090/targets  （全ターゲットが UP）

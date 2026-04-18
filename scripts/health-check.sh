@@ -12,6 +12,7 @@ SERVICES=(
   "ai-support-service:8087"
   "coupon-service:8088"
   "api-gateway-service:8090"
+  "agent-runtime-monolith:8100"
 )
 
 MAX_WAIT=180  # 最大待機秒数

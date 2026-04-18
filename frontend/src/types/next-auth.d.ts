@@ -31,7 +31,7 @@ declare module 'next-auth/jwt' {
     email: string;
     firstName: string;
     lastName: string;
-    role: 'CUSTOMER' | 'ADMIN' | 'MANAGER';
+    role: 'ADMIN' | 'MANAGER' | 'STAFF' | 'EMPLOYEE' | 'USER' | 'CUSTOMER';
     accessToken: string;
     refreshToken: string;
     expiresAt: string;

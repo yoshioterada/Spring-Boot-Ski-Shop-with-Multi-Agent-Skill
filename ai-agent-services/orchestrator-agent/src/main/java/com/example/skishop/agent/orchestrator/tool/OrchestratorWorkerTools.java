@@ -73,11 +73,15 @@ public class OrchestratorWorkerTools {
 
     @Tool(description = """
             顧客のスキルレベル・予算・気象に基づき、最適なスキー用品をランキング推奨する。
+            categories は次の canonical category ID をカンマ区切りで指定する:
+              cat-ski (スキー板) / cat-boots (ブーツ) / cat-wear (ウェア) /
+              cat-gloves (グローブ) / cat-goggles (ゴーグル) /
+              cat-helmets (ヘルメット) / cat-poles (ポール)
             """)
     public String matchEquipment(
             @ToolParam(description = "ユーザー ID") String userId,
             @ToolParam(description = "スキルレベル: BEGINNER/INTERMEDIATE/ADVANCED/EXPERT") String skillLevel,
-            @ToolParam(description = "希望カテゴリ（カンマ区切り）") String categories,
+            @ToolParam(description = "希望カテゴリ ID をカンマ区切り（cat-ski, cat-wear など）") String categories,
             @ToolParam(description = "予算（円、任意）") @Nullable Integer budgetYen,
             @ToolParam(description = "行き先リゾート名") @Nullable String destination,
             @ToolParam(description = "推奨数量（デフォルト 1）") int quantity) {

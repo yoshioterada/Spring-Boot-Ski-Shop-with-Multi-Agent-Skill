@@ -211,7 +211,7 @@ export default function ReturnsPage() {
             </div>
             <div className="space-y-2">
               <Label>返品理由</Label>
-              <Select value={reason} onValueChange={setReason}>
+              <Select value={reason} onValueChange={(v) => setReason(v ?? '')}>
                 <SelectTrigger>
                   <SelectValue placeholder="理由を選択" />
                 </SelectTrigger>

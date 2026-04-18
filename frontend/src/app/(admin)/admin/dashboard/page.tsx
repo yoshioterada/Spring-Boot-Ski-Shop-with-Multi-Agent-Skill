@@ -240,8 +240,9 @@ export default function DashboardPage() {
     fetchDashboard();
   }, [fetchDashboard]);
 
+  // analytics: BFF から KPI 集計済みオブジェクトが届く。null の場合のみフォールバック。
+  const analyticsAvailable = data?.analytics != null;
   const kpi = data?.analytics?.kpi ?? fallbackKpi;
-  const analyticsAvailable = data?.analytics !== null;
 
   const salesChartMap = {
     daily: data?.analytics?.salesChart?.daily ?? fallbackSalesDaily,
@@ -250,11 +251,13 @@ export default function DashboardPage() {
   };
   const salesData = salesChartMap[chartRange];
 
-  const lowStockItems = Array.isArray(data?.lowStock) ? data.lowStock : (data?.lowStock?.content ?? fallbackLowStock);
-  const lowStockAvailable = data?.lowStock !== null;
+  // lowStock: BFF から配列が届く。null/undefined の場合のみフォールバック。
+  const lowStockAvailable = Array.isArray(data?.lowStock);
+  const lowStockItems = Array.isArray(data?.lowStock) ? data.lowStock : fallbackLowStock;
 
+  // recentOrders: BFF から { content: [...] } が届く。null の場合のみフォールバック。
+  const ordersAvailable = data?.recentOrders != null;
   const recentOrders = data?.recentOrders?.content ?? fallbackOrders;
-  const ordersAvailable = data?.recentOrders !== null;
 
   if (loading) {
     return (

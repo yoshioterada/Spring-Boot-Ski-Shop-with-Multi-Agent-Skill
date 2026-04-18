@@ -11,10 +11,50 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.lang.Nullable;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 public class EquipmentMatchingToolService {
 
     private static final Logger log = LoggerFactory.getLogger(EquipmentMatchingToolService.class);
+
+    /**
+     * LLM が渡しがちなカテゴリ別名 → 在庫サービスが受け付ける canonical category ID へのマッピング。
+     * 在庫サービスは categoryId（cat-xxx 形式）の完全一致でフィルタするため、
+     * "SKI" "ski" "板" のような表現を吸収する。
+     */
+    private static final Map<String, String> CATEGORY_ALIASES = Map.ofEntries(
+            Map.entry("ski", "cat-ski"),
+            Map.entry("skis", "cat-ski"),
+            Map.entry("スキー", "cat-ski"),
+            Map.entry("スキー板", "cat-ski"),
+            Map.entry("板", "cat-ski"),
+            Map.entry("boots", "cat-boots"),
+            Map.entry("boot", "cat-boots"),
+            Map.entry("ski boots", "cat-boots"),
+            Map.entry("ブーツ", "cat-boots"),
+            Map.entry("スキーブーツ", "cat-boots"),
+            Map.entry("wear", "cat-wear"),
+            Map.entry("ski wear", "cat-wear"),
+            Map.entry("apparel", "cat-wear"),
+            Map.entry("ウェア", "cat-wear"),
+            Map.entry("スキーウェア", "cat-wear"),
+            Map.entry("jacket", "cat-wear"),
+            Map.entry("gloves", "cat-gloves"),
+            Map.entry("glove", "cat-gloves"),
+            Map.entry("グローブ", "cat-gloves"),
+            Map.entry("手袋", "cat-gloves"),
+            Map.entry("goggles", "cat-goggles"),
+            Map.entry("goggle", "cat-goggles"),
+            Map.entry("ゴーグル", "cat-goggles"),
+            Map.entry("helmet", "cat-helmets"),
+            Map.entry("helmets", "cat-helmets"),
+            Map.entry("ヘルメット", "cat-helmets"),
+            Map.entry("pole", "cat-poles"),
+            Map.entry("poles", "cat-poles"),
+            Map.entry("ストック", "cat-poles"),
+            Map.entry("ポール", "cat-poles"));
+
     private final InventoryClient inventoryClient;
     private final WeatherInvoker weatherInvoker;
 
@@ -24,16 +64,47 @@ public class EquipmentMatchingToolService {
         this.weatherInvoker = weatherInvoker;
     }
 
+    /**
+     * 入力カテゴリを在庫サービスが受け付ける canonical な categoryId へ正規化する。
+     * 既に "cat-xxx" 形式ならそのまま、別名なら対応する ID へ変換、未知ならそのまま返す。
+     */
+    static String normalizeCategory(String input) {
+        if (input == null) return null;
+        String trimmed = input.trim();
+        if (trimmed.isEmpty()) return trimmed;
+        if (trimmed.toLowerCase(Locale.ROOT).startsWith("cat-")) {
+            return trimmed.toLowerCase(Locale.ROOT);
+        }
+        String alias = CATEGORY_ALIASES.get(trimmed.toLowerCase(Locale.ROOT));
+        if (alias != null) return alias;
+        // 末尾 "s" を取った単数形でも試す
+        if (trimmed.length() > 1 && trimmed.endsWith("s")) {
+            String singular = trimmed.substring(0, trimmed.length() - 1).toLowerCase(Locale.ROOT);
+            String aliasS = CATEGORY_ALIASES.get(singular);
+            if (aliasS != null) return aliasS;
+        }
+        return trimmed;
+    }
+
     @Tool(description = """
             スキルレベルと商品カテゴリを指定して、在庫ありの商品候補を最大20件取得する。
+            category は次のいずれかの canonical ID を使用すること:
+              cat-ski (スキー板) / cat-boots (ブーツ) / cat-wear (ウェア) /
+              cat-gloves (グローブ) / cat-goggles (ゴーグル) /
+              cat-helmets (ヘルメット) / cat-poles (ポール)
             skillLevel: BEGINNER / INTERMEDIATE / ADVANCED / EXPERT
             """)
     public List<ProductCandidate> searchInventoryCandidates(
-            @ToolParam(description = "商品カテゴリ") String category,
+            @ToolParam(description = "商品カテゴリ ID (cat-ski / cat-boots / cat-wear / cat-gloves / cat-goggles / cat-helmets / cat-poles)") String category,
             @ToolParam(description = "スキルレベル") String skillLevel,
             @ToolParam(description = "最大予算（円）") @Nullable Integer maxBudgetYen) {
-        log.info("Tool searchInventoryCandidates: category={}, skill={}", category, skillLevel);
-        return inventoryClient.searchBySkillAndCategory(category, skillLevel, maxBudgetYen);
+        String normalized = normalizeCategory(category);
+        if (!java.util.Objects.equals(normalized, category)) {
+            log.info("Tool searchInventoryCandidates: category={} -> normalized={}, skill={}", category, normalized, skillLevel);
+        } else {
+            log.info("Tool searchInventoryCandidates: category={}, skill={}", category, skillLevel);
+        }
+        return inventoryClient.searchBySkillAndCategory(normalized, skillLevel, maxBudgetYen);
     }
 
     @Tool(description = """

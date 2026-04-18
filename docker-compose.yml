@@ -100,6 +100,7 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts-multi-agent.yml:/etc/prometheus/alerts-multi-agent.yml:ro
       - prometheus-data:/prometheus
     networks:
       - skishop-network
@@ -140,6 +141,7 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       KAFKA_BROKERS: kafka:9092
       KAFKA_REPLICATION_FACTOR: 1
       SPRING_PROFILES_ACTIVE: kafka
@@ -166,6 +168,7 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       KAFKA_BROKERS: kafka:9092
       KAFKA_REPLICATION_FACTOR: 1
       SPRING_PROFILES_ACTIVE: kafka
@@ -190,6 +193,7 @@ services:
     environment:
       MONGODB_URI: mongodb://mongo:27017/skishop_inventory
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       KAFKA_BROKERS: kafka:9092
       KAFKA_REPLICATION_FACTOR: 1
     depends_on:
@@ -215,6 +219,7 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       KAFKA_BROKERS: kafka:9092
       KAFKA_REPLICATION_FACTOR: 1
       SPRING_PROFILES_ACTIVE: kafka
@@ -241,6 +246,7 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       KAFKA_BROKERS: kafka:9092
       KAFKA_REPLICATION_FACTOR: 1
     depends_on:
@@ -266,6 +272,7 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       KAFKA_BROKERS: kafka:9092
       KAFKA_REPLICATION_FACTOR: 1
     depends_on:
@@ -295,6 +302,7 @@ services:
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
       AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-5}
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       KAFKA_BROKERS: kafka:9092
       KAFKA_REPLICATION_FACTOR: 1
     depends_on:
@@ -322,6 +330,7 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       KAFKA_BROKERS: kafka:9092
       KAFKA_REPLICATION_FACTOR: 1
     depends_on:
@@ -347,6 +356,7 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       KAFKA_BROKERS: kafka:9092
       KAFKA_REPLICATION_FACTOR: 1
       AZURE_COMMUNICATION_ENDPOINT: ${AZURE_COMMUNICATION_ENDPOINT}
@@ -383,6 +393,8 @@ services:
       AI_SERVICE_URL: http://ai-support-service:8087
       MAIL_SERVICE_URL: http://mailsend-service:8089
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      ORCHESTRATOR_SERVICE_URL: http://agent-runtime-monolith:8100
     depends_on:
       authentication-service:
         condition: service_started
@@ -401,6 +413,88 @@ services:
       coupon-service:
         condition: service_started
       mailsend-service:
+        condition: service_started
+      agent-runtime-monolith:
+        condition: service_started
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Multi-Agent Runtime (Monolith) — Phase 6 deliverable
+  # ---------------------------------------------------------------------------
+  agent-runtime-monolith:
+    build:
+      context: .
+      dockerfile: ai-agent-services/agent-runtime-monolith/Dockerfile
+    profiles: ["app"]
+    container_name: skishop-agent-runtime
+    ports:
+      - "8100:8100"
+    environment:
+      AGENTS_DEPLOYMENT_MODE: monolith
+      AGENTS_WEB_ENABLED: "true"
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      USER_MANAGEMENT_SERVICE_URL: http://user-management-service:8081
+      INVENTORY_MANAGEMENT_SERVICE_URL: http://inventory-management-service:8082
+      SALES_MANAGEMENT_SERVICE_URL: http://sales-management-service:8083
+      PAYMENT_CART_SERVICE_URL: http://payment-cart-service:8084
+      POINT_SERVICE_URL: http://point-service:8085
+      COUPON_SERVICE_URL: http://coupon-service:8088
+    depends_on:
+      user-management-service:
+        condition: service_started
+      inventory-management-service:
+        condition: service_started
+      sales-management-service:
+        condition: service_started
+      payment-cart-service:
+        condition: service_started
+      point-service:
+        condition: service_started
+      coupon-service:
+        condition: service_started
+    networks:
+      - skishop-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Frontend (Next.js 16) — Web UI
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3001}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Azure SkiShop}
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+    profiles: ["app"]
+    container_name: skishop-frontend
+    ports:
+      - "3001:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3001}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Azure SkiShop}
+      # Server-side: Gateway はコンテナネットワーク内で名前解決
+      API_GATEWAY_URL: http://api-gateway-service:8090
+      # Server-side: 一部 BFF はバックエンドへ直接アクセスする
+      INVENTORY_SERVICE_URL: http://inventory-management-service:8082
+      AI_SERVICE_URL: http://ai-support-service:8087
+      AUTH_SECRET: ${AUTH_SECRET:-dev-secret-change-in-production}
+      AUTH_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3001}
+      NEXTAUTH_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3001}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+    depends_on:
+      api-gateway-service:
         condition: service_started
     networks:
       - skishop-network

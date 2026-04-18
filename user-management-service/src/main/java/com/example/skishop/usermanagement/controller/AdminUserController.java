@@ -29,8 +29,10 @@ public class AdminUserController {
     }
 
     @GetMapping
-    public ResponseEntity<Page<UserResponse>> listUsers(@PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(userService.listUsers(pageable));
+    public ResponseEntity<Page<UserResponse>> listUsers(
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return ResponseEntity.ok(userService.searchUsers(keyword, pageable));
     }
 
     @PutMapping("/{id}/status")

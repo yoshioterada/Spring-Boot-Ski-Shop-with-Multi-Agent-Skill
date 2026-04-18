@@ -143,6 +143,52 @@ export default function AdminUsersPage() {
 
   // Detail dialog
   const [detailUser, setDetailUser] = useState<AdminUser | null>(null);
+  const [detailSummary, setDetailSummary] = useState<{
+    orderCount: number | null;
+    pointsBalance: number | null;
+    tier: string | null;
+  } | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  // 詳細ダイアログを開いたときに、証几/ポイント/会員ランクを集計 BFF から取得する。
+  useEffect(() => {
+    if (!detailUser?.id) {
+      setDetailSummary(null);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailSummary(null);
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/users/${detailUser.id}/summary`, {
+          cache: 'no-store',
+        });
+        if (!res.ok) throw new Error('failed');
+        const data = (await res.json()) as {
+          orderCount?: number;
+          pointsBalance?: number;
+          tier?: string | null;
+        };
+        if (!cancelled) {
+          setDetailSummary({
+            orderCount: data.orderCount ?? 0,
+            pointsBalance: data.pointsBalance ?? 0,
+            tier: data.tier ?? null,
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setDetailSummary({ orderCount: 0, pointsBalance: 0, tier: null });
+        }
+      } finally {
+        if (!cancelled) setDetailLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [detailUser?.id]);
 
   // Status change confirm
   const [statusTarget, setStatusTarget] = useState<{
@@ -474,7 +520,11 @@ export default function AdminUsersPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="px-3 pb-3">
-                    <p className="text-lg font-bold">{detailUser.orderCount ?? '—'}</p>
+                    <p className="text-lg font-bold">
+                      {detailLoading
+                        ? '…'
+                        : (detailSummary?.orderCount ?? detailUser.orderCount ?? 0).toLocaleString()}
+                    </p>
                   </CardContent>
                 </Card>
                 <Card>
@@ -485,7 +535,9 @@ export default function AdminUsersPage() {
                   </CardHeader>
                   <CardContent className="px-3 pb-3">
                     <p className="text-lg font-bold">
-                      {detailUser.pointsBalance != null ? `${detailUser.pointsBalance} pt` : '—'}
+                      {detailLoading
+                        ? '…'
+                        : `${(detailSummary?.pointsBalance ?? detailUser.pointsBalance ?? 0).toLocaleString()} pt`}
                     </p>
                   </CardContent>
                 </Card>
@@ -498,7 +550,11 @@ export default function AdminUsersPage() {
                   <CardContent className="px-3 pb-3">
                     <div className="flex items-center gap-1">
                       <Shield className="h-4 w-4" />
-                      <p className="text-lg font-bold">{detailUser.tier ?? '—'}</p>
+                      <p className="text-lg font-bold">
+                        {detailLoading
+                          ? '…'
+                          : (detailSummary?.tier ?? detailUser.tier ?? '未設定')}
+                      </p>
                     </div>
                   </CardContent>
                 </Card>

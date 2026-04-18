@@ -19,7 +19,7 @@ public class OrchestratorAgentConfig {
     public ChatClient orchestratorChatClient(
             ChatClient.Builder builder,
             @Qualifier("orchestratorWorkerToolCallbacks") ToolCallback[] orchestratorWorkerToolCallbacks) {
-        return builder.defaultTools(orchestratorWorkerToolCallbacks).build();
+        return builder.defaultToolCallbacks(orchestratorWorkerToolCallbacks).build();
     }
 
     @Bean("orchestratorWorkerToolCallbacks")

@@ -1,0 +1,139 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "title": "Multi-Agent Operations",
+  "tags": ["multi-agent", "ai", "phase10"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "title": "Agent Runtime Health",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "up{job=\"agent-runtime-monolith\"}",
+          "legendFormat": "agent-runtime-monolith"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } }, "type": "value" }
+          ],
+          "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "title": "Orchestrator: requests / sec",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum by (uri, status) (rate(http_server_requests_seconds_count{job=\"agent-runtime-monolith\", uri=~\"/api/v1/orchestrator.*\"}[1m]))",
+          "legendFormat": "{{uri}} {{status}}"
+        }
+      ]
+    },
+    {
+      "title": "Worker Agents: requests / sec (by uri)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{job=\"agent-runtime-monolith\", uri=~\"/api/v1/agents/.*\"}[1m]))",
+          "legendFormat": "{{uri}}"
+        }
+      ]
+    },
+    {
+      "title": "Latency p95 (Orchestrator + Workers, seconds)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"agent-runtime-monolith\", uri=~\"/api/v1/(orchestrator|agents)/.*\"}[5m])))",
+          "legendFormat": "p95 {{uri}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "Error rate % (5xx)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "expr": "100 * sum by (uri) (rate(http_server_requests_seconds_count{job=\"agent-runtime-monolith\", status=~\"5..\"}[5m])) / sum by (uri) (rate(http_server_requests_seconds_count{job=\"agent-runtime-monolith\"}[5m]))",
+          "legendFormat": "{{uri}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Azure OpenAI: token consumption (delta / 1m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "sum by (token_type) (rate(spring_ai_chat_client_tokens_total{job=\"agent-runtime-monolith\"}[1m]))",
+          "legendFormat": "{{token_type}}"
+        },
+        {
+          "expr": "sum(rate(spring_ai_chat_client_calls_total{job=\"agent-runtime-monolith\"}[1m]))",
+          "legendFormat": "chat calls / sec"
+        }
+      ],
+      "description": "Spring AI 1.0 が公開する OpenAI トークンメトリクス。メトリクス名はプロジェクト依存で異なる場合あり。"
+    },
+    {
+      "title": "JVM Memory (used / max)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        {
+          "expr": "jvm_memory_used_bytes{job=\"agent-runtime-monolith\", area=\"heap\"}",
+          "legendFormat": "heap used {{id}}"
+        },
+        {
+          "expr": "jvm_memory_max_bytes{job=\"agent-runtime-monolith\", area=\"heap\"}",
+          "legendFormat": "heap max {{id}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "title": "JVM Threads",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "targets": [
+        {
+          "expr": "jvm_threads_live_threads{job=\"agent-runtime-monolith\"}",
+          "legendFormat": "live"
+        },
+        {
+          "expr": "jvm_threads_daemon_threads{job=\"agent-runtime-monolith\"}",
+          "legendFormat": "daemon"
+        }
+      ]
+    }
+  ]
+}

@@ -127,4 +127,53 @@ class InventoryManagementClientTest {
         var c = new InventoryManagementClient("http://localhost:8082", null);
         assertThat(c).isNotNull();
     }
+
+    @Test
+    void config_constructor_with_apikey() {
+        assertThat(new InventoryManagementClient("http://localhost:8082", "key")).isNotNull();
+    }
+
+    @Test
+    void getStock_returns_unknown_when_body_is_null() {
+        // 200 OK but body parses to null → status == null branch
+        server.expect(requestTo("http://localhost:8082/api/v1/internal/inventory/p9"))
+                .andRespond(withSuccess("null", MediaType.APPLICATION_JSON));
+        var s = client.getStock("p9");
+        assertThat(s.availabilityStatus()).isEqualTo("OUT_OF_STOCK");
+    }
+
+    @Test
+    void reserve_returns_failure_when_body_is_null() {
+        server.expect(requestTo("http://localhost:8082/api/v1/internal/inventory/reserve"))
+                .andRespond(withSuccess("null", MediaType.APPLICATION_JSON));
+        var req = new ReservationRequest("o9", "u9",
+                List.of(new ReservationRequest.ReservationItem("p9", 2)), 30);
+        var r = client.reserve(req);
+        assertThat(r.isFullyReserved()).isFalse();
+        assertThat(r.failedProductIds()).containsExactly("p9");
+    }
+
+    @Test
+    void getLowStockItems_success_path() {
+        server.expect(requestTo("http://localhost:8082/api/v1/internal/inventory/alerts?threshold=3"))
+                .andRespond(withSuccess("""
+                        [{"productId":"p1","productName":"Ski","currentStock":2,"threshold":3,
+                          "severity":"WARNING","detectedAt":"2026-04-17T10:00:00Z"}]
+                        """, MediaType.APPLICATION_JSON));
+        assertThat(client.getLowStockItems(3)).hasSize(1);
+    }
+
+    @Test
+    void getLowStockItems_returns_empty_when_body_is_null() {
+        server.expect(requestTo("http://localhost:8082/api/v1/internal/inventory/alerts?threshold=1"))
+                .andRespond(withSuccess("null", MediaType.APPLICATION_JSON));
+        assertThat(client.getLowStockItems(1)).isEmpty();
+    }
+
+    @Test
+    void findAlternatives_returns_empty_when_body_is_null() {
+        server.expect(requestTo("http://localhost:8082/api/v1/internal/inventory/p1/alternatives?category=ski&skillLevel=BEGINNER"))
+                .andRespond(withSuccess("null", MediaType.APPLICATION_JSON));
+        assertThat(client.findAlternatives("p1", "ski", "BEGINNER")).isEmpty();
+    }
 }

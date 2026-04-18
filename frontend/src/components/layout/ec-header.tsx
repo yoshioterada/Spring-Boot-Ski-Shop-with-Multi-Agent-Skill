@@ -38,6 +38,7 @@ import type { Route } from 'next';
 const navigation = [
   { name: t('shared.nav.home'), href: '/' as Route },
   { name: t('shared.nav.catalog'), href: '/catalog' as Route },
+  { name: 'AIアドバイザー', href: '/agent' as Route },
 ];
 
 export function ECHeader() {

@@ -18,11 +18,21 @@ public class RequestLoggingFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         long startTime = System.currentTimeMillis();
 
+        // レスポンスがコミットされる前に X-Response-Time を付与するためのフック。
+        // beforeCommit に登録することで、ヘッダがまだ書き込み可能な段階で確実に追加される。
+        exchange.getResponse().beforeCommit(() -> {
+            long duration = System.currentTimeMillis() - startTime;
+            try {
+                exchange.getResponse().getHeaders().add("X-Response-Time", duration + "ms");
+            } catch (UnsupportedOperationException ex) {
+                // 既にヘッダが ReadOnly 化されている場合は無視（フィルタ自体の失敗は防ぐ）
+                log.debug("Response headers already committed; skip X-Response-Time");
+            }
+            return Mono.empty();
+        });
+
         return chain.filter(exchange).then(Mono.fromRunnable(() -> {
             long duration = System.currentTimeMillis() - startTime;
-            exchange.getResponse().getHeaders()
-                    .add("X-Response-Time", duration + "ms");
-
             log.info("{} {} -> {} ({}ms)",
                     exchange.getRequest().getMethod(),
                     exchange.getRequest().getURI().getPath(),

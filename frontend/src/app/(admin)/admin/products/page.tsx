@@ -101,12 +101,13 @@ const statusOptions = [
 ];
 
 const categoryOptions = [
-  { value: '1', label: 'スキー板' },
-  { value: '2', label: 'ブーツ' },
-  { value: '3', label: 'ビンディング' },
-  { value: '4', label: 'ウェア' },
-  { value: '5', label: 'ゴーグル・アクセサリ' },
-  { value: '6', label: 'ポール' },
+  { value: 'cat-ski', label: 'スキー板' },
+  { value: 'cat-boots', label: 'スキーブーツ' },
+  { value: 'cat-wear', label: 'スキーウェア' },
+  { value: 'cat-gloves', label: 'グローブ' },
+  { value: 'cat-goggles', label: 'ゴーグル' },
+  { value: 'cat-helmets', label: 'ヘルメット' },
+  { value: 'cat-poles', label: 'ポール' },
 ];
 
 const statusConfig: Record<

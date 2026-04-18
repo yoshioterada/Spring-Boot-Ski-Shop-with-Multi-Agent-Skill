@@ -59,7 +59,10 @@ interface Order {
   id: number;
   orderNumber: string;
   userId: number;
+  customerId?: string;
   customerEmail: string;
+  customerName?: string;
+  customerPhone?: string;
   status: OrderStatus;
   totalAmount: number;
   items: OrderItem[];
@@ -556,9 +559,42 @@ function OrderRow({
                   </Button>
                 )}
               </div>
-              {order.shippingAddress && (
-                <p className="text-muted-foreground text-sm">配送先: {order.shippingAddress}</p>
-              )}
+              <div className="grid gap-3 rounded-md border bg-background/60 p-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">購入者</p>
+                  <p className="text-sm font-semibold">
+                    {order.customerName || '不明'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    顧客 ID: {order.customerId ?? '-'}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">連絡先</p>
+                  <p className="text-sm">
+                    <span className="font-medium">メール:</span>{' '}
+                    {order.customerEmail ? (
+                      <a
+                        href={`mailto:${order.customerEmail}`}
+                        className="text-primary underline-offset-2 hover:underline"
+                      >
+                        {order.customerEmail}
+                      </a>
+                    ) : (
+                      '-'
+                    )}
+                  </p>
+                  <p className="text-sm">
+                    <span className="font-medium">電話:</span> {order.customerPhone || '-'}
+                  </p>
+                </div>
+                {order.shippingAddress && (
+                  <div className="sm:col-span-2 space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">配送先</p>
+                    <p className="text-sm">{order.shippingAddress}</p>
+                  </div>
+                )}
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>

@@ -1,5 +1,7 @@
 package com.example.skishop.auth.config;
 
+import com.example.skishop.common.security.InternalApiKeyAuthenticationFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -24,7 +26,14 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public InternalApiKeyAuthenticationFilter internalApiKeyAuthenticationFilter(
+            @Value("${internal.api-key}") String apiKey) {
+        return new InternalApiKeyAuthenticationFilter(apiKey);
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http,
+                                            InternalApiKeyAuthenticationFilter internalFilter) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -36,6 +45,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/auth/users/*/hard").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(internalFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

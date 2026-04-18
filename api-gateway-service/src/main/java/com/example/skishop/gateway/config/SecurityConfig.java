@@ -3,16 +3,28 @@ package com.example.skishop.gateway.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverterAdapter;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import reactor.core.publisher.Mono;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
 @Configuration
 @EnableWebFluxSecurity
@@ -24,9 +36,9 @@ public class SecurityConfig {
             throw new IllegalStateException("jwt.secret is required for API Gateway (set JWT_SECRET in .env)");
         }
 
-        var secretKey = new SecretKeySpec(jwtSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        var secretKey = new SecretKeySpec(jwtSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA512");
         return NimbusReactiveJwtDecoder.withSecretKey(secretKey)
-                .macAlgorithm(MacAlgorithm.HS256)
+                .macAlgorithm(MacAlgorithm.HS512)
                 .build();
     }
 
@@ -58,8 +70,40 @@ public class SecurityConfig {
                         // その他は認証必須
                         .anyExchange().authenticated()
                 )
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}));
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt ->
+                        jwt.jwtAuthenticationConverter(reactiveJwtAuthenticationConverter())));
 
         return http.build();
+    }
+
+    /**
+     * JWT のカスタムクレーム `role`（authentication-service が発行）から
+     * Spring Security の `ROLE_xxx` 権限へ変換するコンバーター。
+     * これがないと {@code hasRole("ADMIN")} のチェックが通らず 403 となる。
+     */
+    private Converter<Jwt, Mono<AbstractAuthenticationToken>> reactiveJwtAuthenticationConverter() {
+        var scopesConverter = new JwtGrantedAuthoritiesConverter();
+        scopesConverter.setAuthorityPrefix("SCOPE_");
+
+        var converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter((Jwt jwt) -> {
+            Collection<GrantedAuthority> authorities = new ArrayList<>(scopesConverter.convert(jwt));
+            // role クレーム (単一文字列)
+            Object roleClaim = jwt.getClaim("role");
+            if (roleClaim instanceof String s && !s.isBlank()) {
+                authorities.add(new SimpleGrantedAuthority("ROLE_" + s));
+            }
+            // roles クレーム (配列形式) も念のためサポート
+            Object rolesClaim = jwt.getClaim("roles");
+            if (rolesClaim instanceof List<?> list) {
+                for (Object r : list) {
+                    if (r instanceof String s && !s.isBlank()) {
+                        authorities.add(new SimpleGrantedAuthority("ROLE_" + s));
+                    }
+                }
+            }
+            return authorities;
+        });
+        return new ReactiveJwtAuthenticationConverterAdapter(converter);
     }
 }
