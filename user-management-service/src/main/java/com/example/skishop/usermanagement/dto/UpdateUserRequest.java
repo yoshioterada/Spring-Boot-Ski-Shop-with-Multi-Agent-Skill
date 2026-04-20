@@ -13,6 +13,9 @@ public record UpdateUserRequest(
         @Size(max = 20)
         String phoneNumber,
 
+        @Size(max = 500)
+        String address,
+
         LocalDate birthDate,
 
         String gender

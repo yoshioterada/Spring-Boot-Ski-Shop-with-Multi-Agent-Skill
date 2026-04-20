@@ -133,4 +133,24 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Tip カード出現アニメーション (prefers-reduced-motion を尊重) */
+  @keyframes tip-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-tip-in {
+    animation: tip-in 320ms ease-out both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-tip-in {
+      animation: none;
+    }
+  }
 }

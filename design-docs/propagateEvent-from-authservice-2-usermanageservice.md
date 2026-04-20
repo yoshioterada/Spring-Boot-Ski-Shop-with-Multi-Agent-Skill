@@ -1817,7 +1817,7 @@ cat > .env.production << 'EOF'
 SPRING_PROFILES_ACTIVE=production
 
 # Database Configuration
-DATABASE_URL=jdbc:postgresql://skishop-postgres.postgres.database.azure.com:5432/postgres
+DATABASE_URL=jdbc:postgresql://<DB_HOST>.postgres.database.azure.com:5432/postgres
 DATABASE_USERNAME=skishop
 DATABASE_PASSWORD=SecurePassword123!
 

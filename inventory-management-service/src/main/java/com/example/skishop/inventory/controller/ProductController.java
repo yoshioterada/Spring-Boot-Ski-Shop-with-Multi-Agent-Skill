@@ -2,6 +2,7 @@ package com.example.skishop.inventory.controller;
 
 import com.example.skishop.inventory.dto.*;
 import com.example.skishop.inventory.service.ProductService;
+import com.example.skishop.inventory.service.SearchAnalyticsService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,9 +23,11 @@ public class ProductController {
     private static final Logger log = LoggerFactory.getLogger(ProductController.class);
 
     private final ProductService productService;
+    private final SearchAnalyticsService searchAnalyticsService;
 
-    public ProductController(ProductService productService) {
+    public ProductController(ProductService productService, SearchAnalyticsService searchAnalyticsService) {
         this.productService = productService;
+        this.searchAnalyticsService = searchAnalyticsService;
     }
 
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
@@ -68,7 +71,12 @@ public class ProductController {
 
     @GetMapping("/products/search")
     public ResponseEntity<Page<ProductResponse>> searchProducts(@RequestParam String q, @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(productService.searchProducts(q, pageable));
+        long start = System.nanoTime();
+        Page<ProductResponse> result = productService.searchProducts(q, pageable);
+        long durationMs = (System.nanoTime() - start) / 1_000_000L;
+        // 検索ログを非同期で記録 (失敗しても応答を妨げない)
+        searchAnalyticsService.logSearchAsync(q, result.getTotalElements(), durationMs);
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/products/category/{categoryId}")
@@ -79,6 +87,15 @@ public class ProductController {
     @PostMapping("/products/batch")
     public ResponseEntity<List<ProductResponse>> getProductsByIds(@RequestBody List<String> productIds) {
         return ResponseEntity.ok(productService.getProductsByIds(productIds));
+    }
+
+    /**
+     * SKU リストから商品を一括取得する内部向けエンドポイント。
+     * sales-management が売上分析でカテゴリ集計する際に使用する。
+     */
+    @PostMapping("/products/batch-by-sku")
+    public ResponseEntity<List<ProductResponse>> getProductsBySkus(@RequestBody List<String> skus) {
+        return ResponseEntity.ok(productService.getProductsBySkus(skus));
     }
 
     // --- Inventory endpoints ---
@@ -121,6 +138,15 @@ public class ProductController {
             @RequestParam(defaultValue = "10") int threshold,
             @PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(productService.getLowStockProducts(threshold, pageable));
+    }
+
+    /**
+     * F4 滞留在庫レーダー用: 全商品の SKU・在庫数を返す。
+     * ai-support-service の DeadStockService から内部 API キーで呼び出される。
+     */
+    @GetMapping("/inventory/all")
+    public ResponseEntity<List<ProductResponse>> getAllInventory() {
+        return ResponseEntity.ok(productService.getAllProducts());
     }
 
     @PostMapping("/inventory/batch")

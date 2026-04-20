@@ -1,6 +1,7 @@
 package com.example.skishop.usermanagement.controller;
 
 import com.example.skishop.usermanagement.dto.AssignRoleRequest;
+import com.example.skishop.usermanagement.dto.UpdateStatusRequest;
 import com.example.skishop.usermanagement.dto.UserResponse;
 import com.example.skishop.usermanagement.service.UserService;
 import jakarta.validation.Valid;
@@ -37,9 +38,9 @@ public class AdminUserController {
 
     @PutMapping("/{id}/status")
     public ResponseEntity<Void> updateStatus(@PathVariable UUID id,
-                                              @RequestParam String status) {
-        log.info("Admin updating user {} status to {}", id, status);
-        userService.updateUserStatus(id, status);
+                                              @Valid @RequestBody UpdateStatusRequest request) {
+        log.info("Admin updating user {} status to {}", id, request.status());
+        userService.updateUserStatus(id, request.status());
         return ResponseEntity.noContent().build();
     }
 

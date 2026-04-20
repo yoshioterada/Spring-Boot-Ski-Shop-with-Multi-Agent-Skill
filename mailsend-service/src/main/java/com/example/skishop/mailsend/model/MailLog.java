@@ -64,7 +64,7 @@ public class MailLog {
     @Column(name = "variables_json", columnDefinition = "TEXT")
     private String variablesJson;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
@@ -96,6 +96,9 @@ public class MailLog {
         this.status = status;
         this.variablesJson = variablesJson;
         this.retryCount = 0;
+        var now = Instant.now();
+        this.createdAt = now;
+        this.updatedAt = now;
     }
 
     @PrePersist

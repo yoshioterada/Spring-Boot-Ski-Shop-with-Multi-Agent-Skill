@@ -76,7 +76,7 @@ class MailServiceTest {
                 null,
                 "password-reset",
                 "パスワード再設定のご案内",
-                Map.of("firstName", "太郎", "resetUrl", "http://localhost:3000/password/reset?token=t")
+                Map.of("firstName", "太郎", "resetUrl", "http://localhost:3000/reset-password?token=t")
         );
 
         // Act
@@ -177,7 +177,7 @@ class MailServiceTest {
         var inbound = new MailService.InboundMail(
                 "e-400", "PASSWORD_RESET_REQUESTED", "c3",
                 "user@example.com", null, "password-reset", "パスワード再設定",
-                Map.of("firstName", "太郎", "resetUrl", "http://localhost:3000/password/reset?token=t"));
+                Map.of("firstName", "太郎", "resetUrl", "http://localhost:3000/reset-password?token=t"));
 
         // Act
         service.sendInbound(inbound);

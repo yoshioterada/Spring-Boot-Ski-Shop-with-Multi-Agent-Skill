@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,4 +32,32 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, UUID> 
             "LOWER(u.lastName)     LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
             "LOWER(COALESCE(u.phoneNumber, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))")
     Page<UserProfile> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);
+
+    // ============================================================
+    // Analytics aggregation queries
+    // ============================================================
+
+    /** 期間内に作成されたユーザー数を日別集計 [date, count]。 */
+    @Query(value = """
+            SELECT CAST(u.created_at AS date) AS d, COUNT(*) AS cnt
+            FROM user_profiles u
+            WHERE u.created_at >= :since
+            GROUP BY CAST(u.created_at AS date)
+            ORDER BY d
+            """, nativeQuery = true)
+    List<Object[]> countDailyRegistrations(@Param("since") Instant since);
+
+    /** ステータス別ユーザー数 [status, count]。 */
+    @Query(value = """
+            SELECT u.status AS status, COUNT(*) AS cnt
+            FROM user_profiles u
+            GROUP BY u.status
+            """, nativeQuery = true)
+    List<Object[]> countByStatus();
+
+    /** 期間内の新規登録ユーザー総数。 */
+    @Query(value = """
+            SELECT COUNT(*) FROM user_profiles u WHERE u.created_at >= :since
+            """, nativeQuery = true)
+    long countNewUsersSince(@Param("since") Instant since);
 }

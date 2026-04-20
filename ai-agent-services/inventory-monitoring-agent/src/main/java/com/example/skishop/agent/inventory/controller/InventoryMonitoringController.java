@@ -1,5 +1,6 @@
 package com.example.skishop.agent.inventory.controller;
 
+import com.example.skishop.agent.common.dto.InventoryAnalysisResult;
 import com.example.skishop.agent.common.dto.InventoryCheckRequest;
 import com.example.skishop.agent.common.dto.InventoryStatus;
 import com.example.skishop.agent.common.dto.ReservationRequest;
@@ -31,6 +32,15 @@ public class InventoryMonitoringController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
     public ResponseEntity<List<InventoryStatus>> check(@Valid @RequestBody InventoryCheckRequest request) {
         return ResponseEntity.ok(service.checkAndRoute(request));
+    }
+
+    /**
+     * AI エージェントによる在庫分析。LLM がアラート分類・代替提案・サマリ生成を行う。
+     */
+    @PostMapping("/analyze")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT')")
+    public ResponseEntity<InventoryAnalysisResult> analyze(@Valid @RequestBody InventoryCheckRequest request) {
+        return ResponseEntity.ok(service.analyzeInventory(request));
     }
 
     @PostMapping("/reserve")

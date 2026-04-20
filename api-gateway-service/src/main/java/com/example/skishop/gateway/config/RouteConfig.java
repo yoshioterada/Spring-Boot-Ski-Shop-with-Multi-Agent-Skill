@@ -123,6 +123,13 @@ public class RouteConfig {
                                 .circuitBreaker(cb -> cb.setName("aiCircuitBreaker")
                                         .setFallbackUri("forward:/fallback/ai")))
                         .uri(aiServiceUrl))
+                // AI Analyzer (P1)
+                .route("ai-analyzer", r -> r
+                        .path("/api/v1/admin/ai-analyzer/**")
+                        .filters(f -> f
+                                .circuitBreaker(cb -> cb.setName("aiCircuitBreaker")
+                                        .setFallbackUri("forward:/fallback/ai")))
+                        .uri(aiServiceUrl))
                 .route("mailsend-service", r -> r
                         .path("/api/v1/mail/**")
                         .filters(f -> f

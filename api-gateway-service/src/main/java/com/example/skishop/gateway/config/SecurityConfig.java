@@ -56,6 +56,9 @@ public class SecurityConfig {
                         .pathMatchers("/api/v1/recommendations/**").permitAll()
                         .pathMatchers("/api/v1/search/**").permitAll()
                         .pathMatchers("/fallback/**").permitAll()
+                        // ユーザー管理: メール確認・登録チェックは認証不要
+                        .pathMatchers(HttpMethod.GET, "/api/v1/users/check-email").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/api/v1/users/verify-email").permitAll()
                         // クーポン/キャンペーン: GET は公開、その他は認証必要
                         .pathMatchers(HttpMethod.GET, "/api/v1/coupons/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/api/v1/campaigns/**").permitAll()

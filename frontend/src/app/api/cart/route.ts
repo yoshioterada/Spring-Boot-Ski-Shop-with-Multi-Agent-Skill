@@ -3,9 +3,12 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const CART_SERVICE_URL = process.env.CART_SERVICE_URL || 'http://localhost:8084';
-const POINT_SERVICE_URL = process.env.POINT_SERVICE_URL || 'http://localhost:8085';
-const COUPON_SERVICE_URL = process.env.COUPON_SERVICE_URL || 'http://localhost:8088';
+// Docker では API Gateway 経由で各バックエンドサービスに到達する。
+// 個別の SERVICE_URL を明示すれば直接サービスにも接続可能。
+const GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://localhost:8090';
+const CART_SERVICE_URL = process.env.CART_SERVICE_URL || GATEWAY_URL;
+const POINT_SERVICE_URL = process.env.POINT_SERVICE_URL || GATEWAY_URL;
+const COUPON_SERVICE_URL = process.env.COUPON_SERVICE_URL || GATEWAY_URL;
 
 export async function GET() {
   try {

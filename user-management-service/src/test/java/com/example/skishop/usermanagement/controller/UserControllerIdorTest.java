@@ -59,7 +59,7 @@ class UserControllerIdorTest {
     private UserResponse createUserResponse(UUID id) {
         return new UserResponse(
                 id, "test@example.com", "Taro", "Yamada",
-                "090-1234-5678", LocalDate.of(1990, 1, 1), "MALE",
+                "090-1234-5678", null, LocalDate.of(1990, 1, 1), "MALE",
                 "ACTIVE", true, false, "CUSTOMER",
                 Instant.now(), Instant.now());
     }
@@ -105,7 +105,7 @@ class UserControllerIdorTest {
         @Test
         @DisplayName("自分のユーザー情報を更新できる")
         void should_allowUpdate_when_ownerUpdates() throws Exception {
-            var request = new UpdateUserRequest("Jiro", "Suzuki", null, null, null);
+            var request = new UpdateUserRequest("Jiro", "Suzuki", null, null, null, null);
             when(userService.updateUser(ownerId, request)).thenReturn(createUserResponse(ownerId));
 
             mockMvc.perform(put("/api/v1/users/{id}", ownerId)
@@ -118,7 +118,7 @@ class UserControllerIdorTest {
         @Test
         @DisplayName("他人のユーザー情報は更新できない（403）")
         void should_denyUpdate_when_otherUserUpdates() throws Exception {
-            var request = new UpdateUserRequest("Jiro", "Suzuki", null, null, null);
+            var request = new UpdateUserRequest("Jiro", "Suzuki", null, null, null, null);
 
             mockMvc.perform(put("/api/v1/users/{id}", otherUserId)
                             .with(authentication(ownerAuth()))

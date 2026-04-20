@@ -1,0 +1,37 @@
+{
+  "苗場": {
+    "officialUrls": [
+      "https://www.princehotels.co.jp/ski/naeba/",
+      "https://www.princehotels.co.jp/ski/naeba/winter/"
+    ],
+    "note": "苗場プリンスホテル運営。ドラゴンドラで田代と接続。"
+  },
+  "白馬": {
+    "officialUrls": [
+      "https://www.happo-one.jp/",
+      "https://www.hakubavalley.com/"
+    ],
+    "note": "白馬八方尾根スキー場。1998 長野五輪会場。"
+  },
+  "志賀高原": {
+    "officialUrls": [
+      "https://shigakogen-ski.com/",
+      "https://www.shigakogen.gr.jp/"
+    ],
+    "note": "国内最大級。19 スキー場が共通リフト券で連結。"
+  },
+  "野沢温泉": {
+    "officialUrls": [
+      "https://nozawaski.com/",
+      "https://nozawaonsen.jp/"
+    ],
+    "note": "13 の外湯巡りが名物。麻釜が観光名所。"
+  },
+  "ニセコ": {
+    "officialUrls": [
+      "https://www.niseko.ne.jp/ja/",
+      "https://www.grand-hirafu.jp/winter/"
+    ],
+    "note": "ニセコユナイテッド (4 スキー場連結)。世界級パウダー。"
+  }
+}

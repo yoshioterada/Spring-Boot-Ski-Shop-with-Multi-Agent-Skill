@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 
-const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:8082';
-const COUPON_SERVICE_URL = process.env.COUPON_SERVICE_URL || 'http://localhost:8088';
+const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://localhost:8090';
+const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || API_GATEWAY_URL;
+const COUPON_SERVICE_URL = process.env.COUPON_SERVICE_URL || API_GATEWAY_URL;
 
 export async function GET() {
   const headers = {

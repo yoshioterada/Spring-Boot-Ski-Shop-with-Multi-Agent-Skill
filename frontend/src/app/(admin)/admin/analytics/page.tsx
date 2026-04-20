@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { BarChart3, Download, FileText, Loader2, Search, TrendingUp, Users } from 'lucide-react';
+import { BarChart3, Brain, Download, FileText, Loader2, Search, TrendingUp, Users } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
@@ -22,6 +22,11 @@ import {
 import { toast } from 'sonner';
 import { z } from 'zod';
 
+import { AiChatPanel } from '@/components/admin/ai-analyzer/AiChatPanel';
+import { DeadStockRadar } from '@/components/admin/ai-analyzer/DeadStockRadar';
+import { SeasonalForecastPanel } from '@/components/admin/ai-analyzer/SeasonalForecastPanel';
+import { WeeklySummaryCard } from '@/components/admin/ai-analyzer/WeeklySummaryCard';
+import { ZeroHitRadar } from '@/components/admin/ai-analyzer/ZeroHitRadar';
 import { SkeletonTable } from '@/components/common/skeleton-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -65,6 +70,7 @@ interface ProductPerformance {
 }
 
 interface CategoryRevenue {
+  categoryId: string;
   category: string;
   revenue: number;
 }
@@ -76,9 +82,9 @@ interface SalesData {
 }
 
 interface UserStats {
-  visits: number | null;
-  sessionDuration: number | null;
-  conversionRate: number | null;
+  totalUsers: number | null;
+  newUsersInPeriod: number | null;
+  activeUsers: number | null;
 }
 
 interface CustomerSegment {
@@ -99,19 +105,21 @@ interface UsersData {
 
 interface TrendData {
   date: string;
-  [category: string]: string | number;
+  revenue: number;
+  orders: number;
+  uniqueCustomers: number;
 }
 
 interface TrendsData {
   trends: TrendData[] | null;
-  categories: string[] | null;
+  categories: { categoryId: string; category: string; revenue: number; orders: number }[] | null;
 }
 
 interface SearchTerm {
   rank: number;
   keyword: string;
   count: number;
-  conversionRate: number;
+  avgHits: number;
 }
 
 interface SearchRate {
@@ -123,9 +131,19 @@ interface SearchRate {
 interface SearchPerformance {
   date: string;
   searches: number;
+  zeroHits: number;
+  avgDurationMs: number;
+}
+
+interface SearchSummaryStats {
+  totalSearches: number;
+  uniqueKeywords: number;
+  zeroHitRatio: number;
+  averageDurationMs: number;
 }
 
 interface SearchData {
+  stats: SearchSummaryStats | null;
   popularTerms: SearchTerm[] | null;
   hitRates: SearchRate[] | null;
   performance: SearchPerformance[] | null;
@@ -136,127 +154,183 @@ interface ReportResult {
   fileName: string;
 }
 
-// --- Mock Data ---
+// --- Backend response shapes & adapters ---
 
-const MOCK_SALES: SalesData = {
-  forecast: Array.from({ length: 14 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - 13 + i);
-    const base = 800000 + Math.floor(Math.random() * 400000);
-    return {
-      date: `${d.getMonth() + 1}/${d.getDate()}`,
-      actual: i < 10 ? base : 0,
-      forecast: base + Math.floor(Math.random() * 100000 - 50000),
-    };
-  }),
-  topProducts: Array.from({ length: 10 }, (_, i) => ({
-    id: `p-${i + 1}`,
-    name: [
-      'オールマウンテンスキー PRO',
-      'パウダースキー DEEP',
-      'レーシングスキー GS',
-      'フリースタイルスキー PARK',
-      'ツーリングスキー LITE',
-      'ジュニアスキーセット',
-      'スキーブーツ FLEX120',
-      'ゴーグル ハイコントラスト',
-      'スキーウェア 上下セット',
-      'ヘルメット MIPS',
-    ][i],
-    revenue: 5000000 - i * 400000 + Math.floor(Math.random() * 100000),
-    quantity: 200 - i * 15,
-    category: [
-      'スキー',
-      'スキー',
-      'スキー',
-      'スキー',
-      'スキー',
-      'スキー',
-      'ブーツ',
-      'アクセサリー',
-      'ウェア',
-      'アクセサリー',
-    ][i],
-  })),
-  categoryRevenue: [
-    { category: 'スキー', revenue: 18000000 },
-    { category: 'ブーツ', revenue: 8500000 },
-    { category: 'ウェア', revenue: 6200000 },
-    { category: 'アクセサリー', revenue: 4800000 },
-    { category: 'ポール', revenue: 1500000 },
-  ],
-};
+interface BackendSalesSummary {
+  days: number;
+  totalRevenue: number;
+  totalOrders: number;
+  averageOrderValue: number;
+  dailyRevenue: { date: string; revenue: number; orders: number }[];
+  topProducts: { productId: string; productName: string; quantity: number; revenue: number }[];
+  categoryRevenue: { categoryId: string; categoryName: string; revenue: number; orders: number }[];
+}
 
-const MOCK_USERS: UsersData = {
-  stats: { visits: 45230, sessionDuration: 342, conversionRate: 3.8 },
-  segments: [
-    { segment: '新規', count: 3200 },
-    { segment: 'リピート', count: 5800 },
-    { segment: '休眠', count: 1400 },
-  ],
-  registrations: Array.from({ length: 30 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - 29 + i);
-    return {
-      date: `${d.getMonth() + 1}/${d.getDate()}`,
-      count: 30 + Math.floor(Math.random() * 50),
-    };
-  }),
-};
+interface BackendUserSummary {
+  days: number;
+  totalUsers: number;
+  newUsersInPeriod: number;
+  activeUsers: number;
+  statusBreakdown: Record<string, number>;
+  registrations: { date: string; registrations: number }[];
+  segments: { segmentId: string; label: string; count: number; ratio: number }[];
+}
 
-const TREND_CATEGORIES = ['スキー', 'ブーツ', 'ウェア', 'アクセサリー'];
+interface BackendTrendsResponse {
+  days: number;
+  trends: { date: string; revenue: number; orders: number; uniqueCustomers: number }[];
+  categories: { categoryId: string; categoryName: string; revenue: number; orders: number }[];
+}
 
-function makeMockTrends(days: number): TrendsData {
+interface BackendSearchSummary {
+  days: number;
+  totalSearches: number;
+  uniqueKeywords: number;
+  zeroHitRatio: number;
+  averageDurationMs: number;
+  popularKeywords: { keyword: string; searches: number; totalHits: number; avgHitRate: number }[];
+  trend: { date: string; searches: number; zeroHits: number; avgDurationMs: number }[];
+}
+
+function fmtMonthDay(isoDate: string): string {
+  // 'YYYY-MM-DD' -> 'M/D'
+  const parts = isoDate.split('-');
+  if (parts.length === 3) return `${Number(parts[1])}/${Number(parts[2])}`;
+  return isoDate;
+}
+
+function adaptSales(d: BackendSalesSummary | null): SalesData {
+  if (!d) return { forecast: null, topProducts: null, categoryRevenue: null };
+  const daily = d.dailyRevenue ?? [];
+  // 単純な「予測」: 7 日後方移動平均を全期間に適用 (実績値 0 の未来日は 0、過去日は revenue)
+  const forecast: SalesForecast[] = daily.map((p, i) => {
+    const window = daily.slice(Math.max(0, i - 6), i + 1);
+    const avg = window.reduce((s, w) => s + (w.revenue ?? 0), 0) / Math.max(1, window.length);
+    return { date: fmtMonthDay(p.date), actual: p.revenue ?? 0, forecast: Math.round(avg) };
+  });
+  const topProducts: ProductPerformance[] = (d.topProducts ?? []).map((p) => ({
+    id: p.productId,
+    name: p.productName,
+    revenue: p.revenue ?? 0,
+    quantity: p.quantity ?? 0,
+    category: '-',
+  }));
+  const categoryRevenue: CategoryRevenue[] = (d.categoryRevenue ?? []).map((c) => ({
+    categoryId: c.categoryId,
+    category: c.categoryName,
+    revenue: c.revenue ?? 0,
+  }));
   return {
-    categories: TREND_CATEGORIES,
-    trends: Array.from({ length: days }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - days + 1 + i);
-      const row: TrendData = { date: `${d.getMonth() + 1}/${d.getDate()}` };
-      TREND_CATEGORIES.forEach((c) => {
-        row[c] = 100000 + Math.floor(Math.random() * 200000);
-      });
-      return row;
-    }),
+    forecast: forecast.length > 0 ? forecast : null,
+    topProducts: topProducts.length > 0 ? topProducts : null,
+    categoryRevenue: categoryRevenue.length > 0 ? categoryRevenue : null,
   };
 }
 
-const MOCK_SEARCH: SearchData = {
-  popularTerms: [
-    { rank: 1, keyword: 'スキー板', count: 1840, conversionRate: 8.2 },
-    { rank: 2, keyword: 'ゴーグル', count: 1520, conversionRate: 12.1 },
-    { rank: 3, keyword: 'ブーツ 初心者', count: 1210, conversionRate: 6.5 },
-    { rank: 4, keyword: 'ウェア セール', count: 980, conversionRate: 15.3 },
-    { rank: 5, keyword: 'ヘルメット MIPS', count: 870, conversionRate: 9.8 },
-    { rank: 6, keyword: 'ワックス', count: 650, conversionRate: 18.4 },
-    { rank: 7, keyword: 'ポール カーボン', count: 540, conversionRate: 7.1 },
-    { rank: 8, keyword: 'キッズ スキー', count: 430, conversionRate: 5.6 },
-    { rank: 9, keyword: 'バインディング', count: 380, conversionRate: 11.2 },
-    { rank: 10, keyword: 'インソール', count: 320, conversionRate: 22.0 },
-  ],
-  hitRates: [
-    { period: '今週', hitRate: 82.5, zeroHitRate: 17.5 },
-    { period: '先週', hitRate: 79.3, zeroHitRate: 20.7 },
-    { period: '2週間前', hitRate: 80.1, zeroHitRate: 19.9 },
-    { period: '3週間前', hitRate: 77.8, zeroHitRate: 22.2 },
-  ],
-  performance: Array.from({ length: 30 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - 29 + i);
-    return {
-      date: `${d.getMonth() + 1}/${d.getDate()}`,
-      searches: 800 + Math.floor(Math.random() * 400),
-    };
-  }),
+function adaptUsers(d: BackendUserSummary | null): UsersData {
+  if (!d) return { stats: null, segments: null, registrations: null };
+  return {
+    stats: {
+      totalUsers: d.totalUsers ?? null,
+      newUsersInPeriod: d.newUsersInPeriod ?? null,
+      activeUsers: d.activeUsers ?? null,
+    },
+    segments: (d.segments ?? []).map((s) => ({ segment: s.label, count: s.count })),
+    registrations: (d.registrations ?? []).map((r) => ({
+      date: fmtMonthDay(r.date),
+      count: r.registrations ?? 0,
+    })),
+  };
+}
+
+function adaptTrends(d: BackendTrendsResponse | null): TrendsData {
+  if (!d) return { trends: null, categories: null };
+  return {
+    trends: (d.trends ?? []).map((t) => ({
+      date: fmtMonthDay(t.date),
+      revenue: t.revenue ?? 0,
+      orders: t.orders ?? 0,
+      uniqueCustomers: t.uniqueCustomers ?? 0,
+    })),
+    categories: (d.categories ?? []).map((c) => ({
+      categoryId: c.categoryId,
+      category: c.categoryName,
+      revenue: c.revenue ?? 0,
+      orders: c.orders ?? 0,
+    })),
+  };
+}
+
+function adaptSearch(d: BackendSearchSummary | null): SearchData {
+  if (!d) return { stats: null, popularTerms: null, hitRates: null, performance: null };
+  const popularTerms: SearchTerm[] = (d.popularKeywords ?? []).map((k, i) => ({
+    rank: i + 1,
+    keyword: k.keyword,
+    count: k.searches ?? 0,
+    avgHits: k.avgHitRate ?? 0,
+  }));
+  // 週次バケットにまとめてヒット率を算出
+  const trend = d.trend ?? [];
+  const buckets: { period: string; searches: number; zeroHits: number }[] = [];
+  for (let i = trend.length - 1, w = 0; i >= 0; i -= 7, w++) {
+    const slice = trend.slice(Math.max(0, i - 6), i + 1);
+    const searches = slice.reduce((s, t) => s + (t.searches ?? 0), 0);
+    const zeroHits = slice.reduce((s, t) => s + (t.zeroHits ?? 0), 0);
+    const label = w === 0 ? '今週' : w === 1 ? '先週' : `${w + 1}週前`;
+    buckets.push({ period: label, searches, zeroHits });
+    if (buckets.length >= 4) break;
+  }
+  const hitRates: SearchRate[] = buckets.map((b) => {
+    const hit = b.searches > 0 ? ((b.searches - b.zeroHits) / b.searches) * 100 : 0;
+    const zero = b.searches > 0 ? (b.zeroHits / b.searches) * 100 : 0;
+    return { period: b.period, hitRate: Number(hit.toFixed(1)), zeroHitRate: Number(zero.toFixed(1)) };
+  });
+  const performance: SearchPerformance[] = trend.map((t) => ({
+    date: fmtMonthDay(t.date),
+    searches: t.searches ?? 0,
+    zeroHits: t.zeroHits ?? 0,
+    avgDurationMs: t.avgDurationMs ?? 0,
+  }));
+  return {
+    stats: {
+      totalSearches: d.totalSearches ?? 0,
+      uniqueKeywords: d.uniqueKeywords ?? 0,
+      zeroHitRatio: d.zeroHitRatio ?? 0,
+      averageDurationMs: d.averageDurationMs ?? 0,
+    },
+    popularTerms: popularTerms.length > 0 ? popularTerms : null,
+    hitRates: hitRates.length > 0 ? hitRates : null,
+    performance: performance.length > 0 ? performance : null,
+  };
+}
+
+// カテゴリ別の顔色。AI スキー装備アドバイザーの「待ち時間ガイド」パネルと同じトーンで
+// 一貫したカテゴリ認識を与える。Tailwind カラーパレットの 500 番台。
+const CATEGORY_COLOR: Record<string, string> = {
+  'cat-ski':     '#0ea5e9', // sky-500    — 雪・空
+  'cat-boots':   '#f59e0b', // amber-500  — 足元・レザー
+  'cat-wear':    '#10b981', // emerald-500 — アウトドア
+  'cat-helmets': '#ef4444', // red-500    — 安全
+  'cat-goggles': '#06b6d4', // cyan-500   — レンズ
+  'cat-gloves':  '#6366f1', // indigo-500 — 手元
+  'cat-poles':   '#d946ef', // fuchsia-500 — ストック
 };
 
 const PIE_COLORS = [
-  'hsl(var(--primary))',
-  'hsl(var(--chart-2, 160 60% 45%))',
-  'hsl(var(--chart-3, 30 80% 55%))',
-  'hsl(var(--chart-4, 280 65% 60%))',
-  'hsl(var(--chart-5, 340 75% 55%))',
+  '#0ea5e9',
+  '#f59e0b',
+  '#10b981',
+  '#ef4444',
+  '#06b6d4',
+  '#6366f1',
+  '#d946ef',
+  '#64748b',
 ];
+
+function colorForCategory(id: string | undefined, fallbackIdx: number): string {
+  if (id && CATEGORY_COLOR[id]) return CATEGORY_COLOR[id];
+  return PIE_COLORS[fallbackIdx % PIE_COLORS.length];
+}
 
 // --- Report Schema ---
 
@@ -341,50 +415,52 @@ export default function AdminAnalyticsPage() {
       setLoading(true);
       try {
         const params = new URLSearchParams({ type });
-        if (type === 'sales') params.set('period', salesPeriod);
-        if (type === 'trends') params.set('period', trendPeriod);
+        // 売上タブ: 期間 (日数) を渡す。'day'=14, 'week'=8(週)*7=56, 'month'=12*30
+        if (type === 'sales') {
+          const days = salesPeriod === 'week' ? 56 : salesPeriod === 'month' ? 360 : 14;
+          params.set('days', String(days));
+        }
+        // トレンドタブ: 7d/30d/90d/1y → days
+        if (type === 'trends') {
+          const days =
+            trendPeriod === '7d' ? 7 : trendPeriod === '90d' ? 90 : trendPeriod === '1y' ? 365 : 30;
+          params.set('days', String(days));
+        }
+        // ユーザー / 検索タブ: 30日固定
+        if (type === 'users' || type === 'search') {
+          params.set('days', '30');
+        }
 
         const res = await fetch(`/api/admin/analytics?${params.toString()}`);
         const data = res.ok ? await res.json() : null;
 
         switch (type) {
           case 'sales':
-            setSalesData(data ?? MOCK_SALES);
+            setSalesData(adaptSales(data as BackendSalesSummary | null));
             break;
           case 'users':
-            setUsersData(data ?? MOCK_USERS);
+            setUsersData(adaptUsers(data as BackendUserSummary | null));
             break;
           case 'trends':
-            setTrendsData(
-              data ??
-                makeMockTrends(
-                  trendPeriod === '7d'
-                    ? 7
-                    : trendPeriod === '90d'
-                      ? 90
-                      : trendPeriod === '1y'
-                        ? 365
-                        : 30,
-                ),
-            );
+            setTrendsData(adaptTrends(data as BackendTrendsResponse | null));
             break;
           case 'search':
-            setSearchData(data ?? MOCK_SEARCH);
+            setSearchData(adaptSearch(data as BackendSearchSummary | null));
             break;
         }
       } catch {
         switch (type) {
           case 'sales':
-            setSalesData(MOCK_SALES);
+            setSalesData({ forecast: null, topProducts: null, categoryRevenue: null });
             break;
           case 'users':
-            setUsersData(MOCK_USERS);
+            setUsersData({ stats: null, segments: null, registrations: null });
             break;
           case 'trends':
-            setTrendsData(makeMockTrends(30));
+            setTrendsData({ trends: null, categories: null });
             break;
           case 'search':
-            setSearchData(MOCK_SEARCH);
+            setSearchData({ stats: null, popularTerms: null, hitRates: null, performance: null });
             break;
         }
       } finally {
@@ -447,6 +523,10 @@ export default function AdminAnalyticsPage() {
             <FileText className="mr-1 size-4" />
             レポート生成
           </TabsTrigger>
+          <TabsTrigger value="ai-analyzer">
+            <Brain className="mr-1 size-4" />
+            AI 分析
+          </TabsTrigger>
         </TabsList>
 
         {/* ===== Tab 1: 売上分析 ===== */}
@@ -494,18 +574,20 @@ export default function AdminAnalyticsPage() {
                             type="monotone"
                             dataKey="actual"
                             name="実績"
-                            stroke="hsl(var(--primary))"
+                            stroke="#0ea5e9"
                             strokeWidth={2}
-                            dot={false}
+                            dot={{ r: 3, fill: '#0ea5e9' }}
+                            activeDot={{ r: 5 }}
                           />
                           <Line
                             type="monotone"
                             dataKey="forecast"
                             name="予測"
-                            stroke="hsl(var(--chart-2, 160 60% 45%))"
+                            stroke="#f59e0b"
                             strokeWidth={2}
                             strokeDasharray="5 5"
-                            dot={false}
+                            dot={{ r: 3, fill: '#f59e0b' }}
+                            activeDot={{ r: 5 }}
                           />
                         </LineChart>
                       </ResponsiveContainer>
@@ -577,8 +659,8 @@ export default function AdminAnalyticsPage() {
                                 `${props.name} ${((props.percent ?? 0) * 100).toFixed(0)}%`
                               }
                             >
-                              {salesData.categoryRevenue.map((_, idx) => (
-                                <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                              {salesData.categoryRevenue.map((c, idx) => (
+                                <Cell key={idx} fill={colorForCategory(c.categoryId, idx)} />
                               ))}
                             </Pie>
                             <Tooltip formatter={(v) => formatCurrency(Number(v))} />
@@ -603,24 +685,25 @@ export default function AdminAnalyticsPage() {
             <div className="space-y-6">
               <div className="grid gap-4 md:grid-cols-3">
                 <KpiCard
-                  title="訪問数"
-                  value={usersData?.stats?.visits ? formatNumber(usersData.stats.visits) : null}
-                  suffix="/ 月"
+                  title="総ユーザー数"
+                  value={usersData?.stats?.totalUsers != null ? formatNumber(usersData.stats.totalUsers) : null}
                   icon={Users}
                 />
                 <KpiCard
-                  title="平均セッション時間"
+                  title="期間内 新規登録"
                   value={
-                    usersData?.stats?.sessionDuration
-                      ? `${Math.floor(usersData.stats.sessionDuration / 60)}分${usersData.stats.sessionDuration % 60}秒`
+                    usersData?.stats?.newUsersInPeriod != null
+                      ? formatNumber(usersData.stats.newUsersInPeriod)
                       : null
                   }
+                  suffix="/ 30日"
                   icon={BarChart3}
                 />
                 <KpiCard
-                  title="コンバージョン率"
-                  value={usersData?.stats?.conversionRate ?? null}
-                  suffix="%"
+                  title="アクティブユーザー"
+                  value={
+                    usersData?.stats?.activeUsers != null ? formatNumber(usersData.stats.activeUsers) : null
+                  }
                   icon={TrendingUp}
                 />
               </div>
@@ -680,9 +763,10 @@ export default function AdminAnalyticsPage() {
                               type="monotone"
                               dataKey="count"
                               name="登録数"
-                              stroke="hsl(var(--primary))"
+                              stroke="#0ea5e9"
                               strokeWidth={2}
-                              dot={false}
+                              dot={{ r: 3, fill: '#0ea5e9' }}
+                              activeDot={{ r: 5 }}
                             />
                           </LineChart>
                         </ResponsiveContainer>
@@ -702,59 +786,118 @@ export default function AdminAnalyticsPage() {
           {loading ? (
             <SkeletonTable rows={4} columns={5} />
           ) : (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>カテゴリ別トレンド</CardTitle>
-                    <CardDescription>期間別の売上推移</CardDescription>
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>売上トレンド</CardTitle>
+                      <CardDescription>日別の売上・注文数・ユニーク購入者数</CardDescription>
+                    </div>
+                    <div className="flex gap-1">
+                      {(['7d', '30d', '90d', '1y'] as const).map((p) => (
+                        <Button
+                          key={p}
+                          size="sm"
+                          variant={trendPeriod === p ? 'default' : 'outline'}
+                          onClick={() => setTrendPeriod(p)}
+                        >
+                          {{ '7d': '7日', '30d': '30日', '90d': '90日', '1y': '1年' }[p]}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex gap-1">
-                    {(['7d', '30d', '90d', '1y'] as const).map((p) => (
-                      <Button
-                        key={p}
-                        size="sm"
-                        variant={trendPeriod === p ? 'default' : 'outline'}
-                        onClick={() => setTrendPeriod(p)}
-                      >
-                        {{ '7d': '7日', '30d': '30日', '90d': '90日', '1y': '1年' }[p]}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {trendsData?.trends ? (
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={trendsData.trends}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                        <XAxis dataKey="date" className="text-xs" tick={{ fontSize: 12 }} />
-                        <YAxis
-                          className="text-xs"
-                          tick={{ fontSize: 12 }}
-                          tickFormatter={(v) => `${(Number(v) / 10000).toFixed(0)}万`}
-                        />
-                        <Tooltip formatter={(v) => formatCurrency(Number(v))} />
-                        <Legend />
-                        {(trendsData.categories ?? TREND_CATEGORIES).map((cat, idx) => (
+                </CardHeader>
+                <CardContent>
+                  {trendsData?.trends ? (
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={trendsData.trends}>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                          <XAxis dataKey="date" className="text-xs" tick={{ fontSize: 12 }} />
+                          <YAxis
+                            yAxisId="left"
+                            className="text-xs"
+                            tick={{ fontSize: 12 }}
+                            tickFormatter={(v) => `${(Number(v) / 10000).toFixed(0)}万`}
+                          />
+                          <YAxis
+                            yAxisId="right"
+                            orientation="right"
+                            className="text-xs"
+                            tick={{ fontSize: 12 }}
+                          />
+                          <Tooltip />
+                          <Legend />
                           <Line
-                            key={cat}
+                            yAxisId="left"
                             type="monotone"
-                            dataKey={cat}
-                            stroke={PIE_COLORS[idx % PIE_COLORS.length]}
+                            dataKey="revenue"
+                            name="売上"
+                            stroke="#0ea5e9"
                             strokeWidth={2}
                             dot={false}
                           />
-                        ))}
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <DataBadge />
-                )}
-              </CardContent>
-            </Card>
+                          <Line
+                            yAxisId="right"
+                            type="monotone"
+                            dataKey="orders"
+                            name="注文数"
+                            stroke="#10b981"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line
+                            yAxisId="right"
+                            type="monotone"
+                            dataKey="uniqueCustomers"
+                            name="ユニーク購入者"
+                            stroke="#f59e0b"
+                            strokeWidth={2}
+                            strokeDasharray="5 5"
+                            dot={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <DataBadge />
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>カテゴリ別売上</CardTitle>
+                  <CardDescription>期間集計</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {trendsData?.categories && trendsData.categories.length > 0 ? (
+                    <div className="h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={trendsData.categories}>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                          <XAxis dataKey="category" className="text-xs" tick={{ fontSize: 12 }} />
+                          <YAxis
+                            className="text-xs"
+                            tick={{ fontSize: 12 }}
+                            tickFormatter={(v) => `${(Number(v) / 10000).toFixed(0)}万`}
+                          />
+                          <Tooltip formatter={(v) => formatCurrency(Number(v))} />
+                          <Bar dataKey="revenue" name="売上" radius={[4, 4, 0, 0]}>
+                            {trendsData.categories.map((c, idx) => (
+                              <Cell key={idx} fill={colorForCategory(c.categoryId, idx)} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <DataBadge />
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           )}
         </TabsContent>
 
@@ -776,7 +919,7 @@ export default function AdminAnalyticsPage() {
                           <TableHead>順位</TableHead>
                           <TableHead>キーワード</TableHead>
                           <TableHead className="text-right">検索数</TableHead>
-                          <TableHead className="text-right">CVR</TableHead>
+                          <TableHead className="text-right">平均ヒット件数</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -786,7 +929,7 @@ export default function AdminAnalyticsPage() {
                             <TableCell>{t.keyword}</TableCell>
                             <TableCell className="text-right">{formatNumber(t.count)}</TableCell>
                             <TableCell className="text-right">
-                              {t.conversionRate.toFixed(1)}%
+                              {t.avgHits.toFixed(1)}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -816,13 +959,13 @@ export default function AdminAnalyticsPage() {
                             <Bar
                               dataKey="hitRate"
                               name="ヒット率"
-                              fill="hsl(var(--primary))"
+                              fill="#3b82f6"
                               radius={[4, 4, 0, 0]}
                             />
                             <Bar
                               dataKey="zeroHitRate"
                               name="ゼロヒット率"
-                              fill="hsl(var(--chart-3, 30 80% 55%))"
+                              fill="#ef4444"
                               radius={[4, 4, 0, 0]}
                             />
                           </BarChart>
@@ -852,9 +995,10 @@ export default function AdminAnalyticsPage() {
                               type="monotone"
                               dataKey="searches"
                               name="検索数"
-                              stroke="hsl(var(--primary))"
+                              stroke="#0ea5e9"
                               strokeWidth={2}
-                              dot={false}
+                              dot={{ r: 3, fill: '#0ea5e9' }}
+                              activeDot={{ r: 5 }}
                             />
                           </LineChart>
                         </ResponsiveContainer>
@@ -950,6 +1094,17 @@ export default function AdminAnalyticsPage() {
               </form>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ===== Tab 6: AI 分析 ===== */}
+        <TabsContent value="ai-analyzer">
+          <div className="space-y-6">
+            <WeeklySummaryCard />
+            <SeasonalForecastPanel />
+            <DeadStockRadar />
+            <ZeroHitRadar />
+            <AiChatPanel />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

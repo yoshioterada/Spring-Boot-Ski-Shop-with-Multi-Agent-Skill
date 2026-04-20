@@ -16,6 +16,8 @@ spring:
           options:
             deployment-name: ${AZURE_OPENAI_DEPLOYMENT:gpt-4o}
             temperature: ${AZURE_OPENAI_TEMPERATURE:1.0}
+        client:
+          response-timeout: PT180S
 
 agents:
   deployment:

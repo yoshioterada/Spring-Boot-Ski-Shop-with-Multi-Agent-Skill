@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.messaging.support.MessageBuilder;
 
 import java.util.UUID;
 
@@ -43,7 +42,7 @@ class MailEventConsumerTest {
                 "}";
 
         // Act
-        consumer.accept(MessageBuilder.withPayload(json).build());
+        consumer.accept(json);
 
         // Assert
         verify(mailService).sendInbound(any());
@@ -70,7 +69,7 @@ class MailEventConsumerTest {
                 """;
 
         // Act
-        consumer.accept(MessageBuilder.withPayload(json).build());
+        consumer.accept(json);
 
         // Assert
         verify(mailService).sendInbound(captor.capture());
@@ -102,7 +101,7 @@ class MailEventConsumerTest {
                 """;
 
         // Act
-        consumer.accept(MessageBuilder.withPayload(json).build());
+        consumer.accept(json);
 
         // Assert
         verify(mailService).sendInbound(captor.capture());
@@ -137,7 +136,7 @@ class MailEventConsumerTest {
                 """.formatted(customerId);
 
         // Act
-        consumer.accept(MessageBuilder.withPayload(json).build());
+        consumer.accept(json);
 
         // Assert
         verify(userInfoResolver).resolve(customerId);
@@ -172,7 +171,7 @@ class MailEventConsumerTest {
                 """.formatted(customerId);
 
         // Act
-        consumer.accept(MessageBuilder.withPayload(json).build());
+        consumer.accept(json);
 
         // Assert
         verify(userInfoResolver).resolve(customerId);
@@ -209,7 +208,7 @@ class MailEventConsumerTest {
                 """.formatted(customerId);
 
         // Act
-        consumer.accept(MessageBuilder.withPayload(json).build());
+        consumer.accept(json);
 
         // Assert
         verify(userInfoResolver).resolve(customerId);
@@ -248,7 +247,7 @@ class MailEventConsumerTest {
                 """.formatted(customerId);
 
         // Act
-        consumer.accept(MessageBuilder.withPayload(json).build());
+        consumer.accept(json);
 
         // Assert
         verify(userInfoResolver).resolve(customerId);
@@ -281,7 +280,7 @@ class MailEventConsumerTest {
                 """;
 
         // Act
-        consumer.accept(MessageBuilder.withPayload(json).build());
+        consumer.accept(json);
 
         // Assert
         verify(mailService).sendInbound(captor.capture());
@@ -310,7 +309,7 @@ class MailEventConsumerTest {
                 """;
 
         // Act
-        consumer.accept(MessageBuilder.withPayload(json).build());
+        consumer.accept(json);
 
         // Assert
         verify(mailService, never()).sendInbound(any());
@@ -338,7 +337,7 @@ class MailEventConsumerTest {
                 """.formatted(UUID.randomUUID());
 
         // Act
-        consumer.accept(MessageBuilder.withPayload(json).build());
+        consumer.accept(json);
 
         // Assert
         verify(mailService, never()).sendInbound(any());

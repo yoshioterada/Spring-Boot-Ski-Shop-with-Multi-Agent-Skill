@@ -1,0 +1,17 @@
+{
+  "name": "resort-info-scraper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Azure OpenAI を使い、スキー場公式サイトから ResortMeta 形式の構造化情報を抽出するプロトタイプ",
+  "scripts": {
+    "scrape": "node scrape.mjs",
+    "scrape:single": "node scrape.mjs --resort"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "openai": "^4.73.0"
+  }
+}

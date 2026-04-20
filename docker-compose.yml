@@ -305,6 +305,16 @@ services:
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       KAFKA_BROKERS: kafka:9092
       KAFKA_REPLICATION_FACTOR: 1
+      # AI Analyzer (P0)
+      AI_ANALYZER_ENABLED: "true"
+      AI_ANALYZER_CACHE_TTL_MINUTES: "60"
+      AI_ANALYZER_MAX_HISTORY_TURNS: "8"
+      AI_ANALYZER_MONTHLY_COST_LIMIT_USD: "30"
+      SERVICE_SALES_URL: http://sales-management-service:8083
+      SERVICE_USER_URL: http://user-management-service:8081
+      SERVICE_INVENTORY_URL: http://inventory-management-service:8082
+      SERVICE_COUPON_URL: http://coupon-service:8088
+      SERVICE_WEATHER_URL: http://agent-runtime-monolith:8100
     depends_on:
       postgres:
         condition: service_healthy
@@ -312,6 +322,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      agent-runtime-monolith:
+        condition: service_started
     networks:
       - skishop-network
     restart: unless-stopped

@@ -7,16 +7,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.messaging.Message;
-import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-@Component("mailEventConsumer")
-public class MailEventConsumer implements Consumer<Message<String>> {
+public class MailEventConsumer implements Consumer<String> {
 
     private static final Logger log = LoggerFactory.getLogger(MailEventConsumer.class);
 
@@ -36,20 +33,20 @@ public class MailEventConsumer implements Consumer<Message<String>> {
     }
 
     @Override
-    public void accept(Message<String> message) {
+    public void accept(String payload) {
         try {
-            JsonNode root = objectMapper.readTree(message.getPayload());
+            JsonNode root = objectMapper.readTree(payload);
             String eventId = text(root, "eventId");
             String eventType = text(root, "eventType");
             String correlationId = text(root, "correlationId");
-            JsonNode payload = root.get("payload");
+            JsonNode eventPayload = root.get("payload");
 
-            if (eventId == null || eventType == null || payload == null || payload.isNull()) {
-                log.warn("Invalid event payload skipped: {}", message.getPayload());
+            if (eventId == null || eventType == null || eventPayload == null || eventPayload.isNull()) {
+                log.warn("Invalid event payload skipped: {}", payload);
                 return;
             }
 
-            Inbound resolved = resolve(eventType, payload);
+            Inbound resolved = resolve(eventType, eventPayload);
             if (resolved == null) {
                 log.info("Unknown eventType ignored: {}", eventType);
                 return;
@@ -114,7 +111,7 @@ public class MailEventConsumer implements Consumer<Message<String>> {
 
         var variables = new HashMap<String, Object>();
         variables.put("firstName", firstName != null ? firstName : "お客様");
-        variables.put("resetUrl", mailProperties.baseUrl() + "/password/reset?token=" + token);
+        variables.put("resetUrl", mailProperties.baseUrl() + "/reset-password?token=" + token);
 
         return new Inbound(email, firstName, "password-reset", "パスワード再設定のご案内", variables);
     }

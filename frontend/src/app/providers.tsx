@@ -6,7 +6,15 @@ import { useState } from 'react';
 
 import { ToastProvider } from '@/components/common/toast-provider';
 
-export function Providers({ children }: { children: React.ReactNode }) {
+import type { Session } from 'next-auth';
+
+export function Providers({
+  children,
+  session,
+}: {
+  children: React.ReactNode;
+  session: Session | null;
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -34,7 +42,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <SessionProvider>
+    <SessionProvider session={session}>
       <QueryClientProvider client={queryClient}>
         {children}
         <ToastProvider />

@@ -5,6 +5,7 @@ import com.example.skishop.agent.common.dto.SkiConditionsData;
 import com.example.skishop.agent.common.dto.SkiFeasibilityResult;
 import com.example.skishop.agent.common.dto.WeatherAgentRequest;
 import com.example.skishop.agent.common.dto.WeatherAgentResponse;
+import com.example.skishop.agent.common.dto.WeatherForecastData;
 import com.example.skishop.agent.weather.service.WeatherAgentService;
 import com.example.skishop.agent.weather.tool.WeatherToolService;
 import jakarta.validation.Valid;
@@ -44,6 +45,14 @@ public class WeatherAgentController {
             @RequestParam String location,
             @RequestParam(defaultValue = "celsius") String unit) {
         return ResponseEntity.ok(weatherToolService.getCurrentWeather(location, unit));
+    }
+
+    @GetMapping("/forecast")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'AGENT', 'USER')")
+    public ResponseEntity<WeatherForecastData> getWeatherForecast(
+            @RequestParam String location,
+            @RequestParam(defaultValue = "7") int days) {
+        return ResponseEntity.ok(weatherToolService.getWeatherForecast(location, days));
     }
 
     @GetMapping("/ski-conditions")

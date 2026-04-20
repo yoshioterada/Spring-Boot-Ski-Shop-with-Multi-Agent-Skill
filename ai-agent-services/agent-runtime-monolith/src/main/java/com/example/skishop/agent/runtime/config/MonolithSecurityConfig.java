@@ -1,7 +1,9 @@
 package com.example.skishop.agent.runtime.config;
 
+import com.example.skishop.common.security.InternalApiKeyAuthenticationFilter;
 import com.example.skishop.common.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -34,17 +36,26 @@ public class MonolithSecurityConfig {
     }
 
     @Bean
+    public InternalApiKeyAuthenticationFilter internalApiKeyAuthenticationFilter(
+            @Value("${services.internal-api-key:${internal.api-key:}}") String apiKey) {
+        return new InternalApiKeyAuthenticationFilter(apiKey);
+    }
+
+    @Bean
     public SecurityFilterChain monolithSecurityFilterChain(HttpSecurity http,
-                                                           JwtAuthenticationFilter jwtFilter) throws Exception {
+                                                           JwtAuthenticationFilter jwtFilter,
+                                                           InternalApiKeyAuthenticationFilter internalFilter) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
+                        .requestMatchers("/error").permitAll()
                         .requestMatchers("/api/v1/orchestrator/**").hasAnyRole("USER", "ADMIN", "MANAGER")
-                        .requestMatchers("/api/v1/agents/**").hasAnyRole("AGENT_ADMIN", "ADMIN")
+                        .requestMatchers("/api/v1/agents/**").hasAnyRole("AGENT_ADMIN", "ADMIN", "AGENT")
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(internalFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

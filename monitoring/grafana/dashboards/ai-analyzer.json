@@ -1,0 +1,111 @@
+{
+  "dashboard": {
+    "title": "AI Analyzer",
+    "uid": "ai-analyzer",
+    "tags": ["ai", "analyzer", "llm"],
+    "timezone": "Asia/Tokyo",
+    "refresh": "30s",
+    "panels": [
+      {
+        "title": "リクエスト数 (per endpoint)",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(ai_analyzer_requests_total[5m])) by (endpoint, status)",
+            "legendFormat": "{{endpoint}} - {{status}}"
+          }
+        ]
+      },
+      {
+        "title": "レイテンシ p95 (seconds)",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(ai_analyzer_latency_seconds_bucket[5m])) by (le, endpoint))",
+            "legendFormat": "{{endpoint}} p95"
+          }
+        ]
+      },
+      {
+        "title": "エラー率 (%)",
+        "type": "gauge",
+        "gridPos": { "x": 0, "y": 8, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "expr": "sum(rate(ai_analyzer_requests_total{status=~'5..'}[5m])) / sum(rate(ai_analyzer_requests_total[5m])) * 100",
+            "legendFormat": "Error Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 5, "color": "red" }
+              ]
+            },
+            "unit": "percent"
+          }
+        }
+      },
+      {
+        "title": "トークン消費 (cumulative)",
+        "type": "timeseries",
+        "gridPos": { "x": 8, "y": 8, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "expr": "sum(ai_analyzer_tokens_total) by (endpoint)",
+            "legendFormat": "{{endpoint}}"
+          }
+        ]
+      },
+      {
+        "title": "月次コスト (USD)",
+        "type": "stat",
+        "gridPos": { "x": 16, "y": 8, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "expr": "sum(increase(ai_analyzer_cost_usd_total[30d]))",
+            "legendFormat": "Estimated Monthly Cost"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 20, "color": "yellow" },
+                { "value": 30, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "F4 クーポン発行数 (by severity)",
+        "type": "barchart",
+        "gridPos": { "x": 0, "y": 14, "w": 12, "h": 6 },
+        "targets": [
+          {
+            "expr": "sum(increase(dead_stock_coupon_issued_total[24h])) by (severity)",
+            "legendFormat": "{{severity}}"
+          }
+        ]
+      },
+      {
+        "title": "F5 Dismiss 数 (by reason)",
+        "type": "barchart",
+        "gridPos": { "x": 12, "y": 14, "w": 12, "h": 6 },
+        "targets": [
+          {
+            "expr": "sum(increase(zero_hit_opportunities_dismissed_total[24h])) by (reason)",
+            "legendFormat": "{{reason}}"
+          }
+        ]
+      }
+    ]
+  }
+}

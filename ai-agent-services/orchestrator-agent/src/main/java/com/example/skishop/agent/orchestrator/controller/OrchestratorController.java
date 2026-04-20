@@ -1,5 +1,6 @@
 package com.example.skishop.agent.orchestrator.controller;
 
+import com.example.skishop.agent.common.dto.CustomerIntentResult;
 import com.example.skishop.agent.orchestrator.dto.OrchestratorRequest;
 import com.example.skishop.agent.orchestrator.dto.OrchestratorResponse;
 import com.example.skishop.agent.orchestrator.service.OrchestratorAgentService;
@@ -31,6 +32,17 @@ public class OrchestratorController {
             HttpServletRequest httpRequest) {
         String jwtToken = extractBearerToken(httpRequest);
         return ResponseEntity.ok(service.orchestrate(request, jwtToken));
+    }
+
+    /**
+     * 待ち時間ストリーミング機能向けの軽量 Intent 抽出エンドポイント。
+     * CustomerIntent Worker のみを 1 回呼び出して行き先・スキルレベル等を素早く返す。
+     */
+    @PostMapping("/intent-only")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER')")
+    public ResponseEntity<CustomerIntentResult> intentOnly(
+            @Valid @RequestBody OrchestratorRequest request) {
+        return ResponseEntity.ok(service.extractIntentOnly(request));
     }
 
     static String extractBearerToken(HttpServletRequest request) {

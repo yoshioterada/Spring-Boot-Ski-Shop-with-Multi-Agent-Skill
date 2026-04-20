@@ -132,7 +132,7 @@ class UserServiceTest {
         void should_updateUser_when_validRequest() {
             UUID userId = UUID.randomUUID();
             var user = createTestUser();
-            var request = new UpdateUserRequest("次郎", "田中", "080-9999-8888", null, null);
+            var request = new UpdateUserRequest("次郎", "田中", "080-9999-8888", null, null, null);
             when(userProfileRepository.findById(userId)).thenReturn(Optional.of(user));
             when(userProfileRepository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
 

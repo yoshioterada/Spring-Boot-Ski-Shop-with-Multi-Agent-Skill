@@ -1,8 +1,10 @@
 package com.example.skishop.agent.orchestrator.service;
 
+import com.example.skishop.agent.common.dto.CustomerIntentResult;
 import com.example.skishop.agent.orchestrator.client.UserManagementClient;
 import com.example.skishop.agent.orchestrator.dto.OrchestratorRequest;
 import com.example.skishop.agent.orchestrator.dto.OrchestratorResponse;
+import com.example.skishop.agent.orchestrator.invoker.WorkerAgentInvoker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -39,12 +41,32 @@ public class OrchestratorAgentService {
 
     private final ChatClient orchestratorChatClient;
     private final UserManagementClient userManagementClient;
+    private final WorkerAgentInvoker workerInvoker;
 
     public OrchestratorAgentService(
             @Qualifier("orchestratorChatClient") ChatClient orchestratorChatClient,
-            UserManagementClient userManagementClient) {
+            UserManagementClient userManagementClient,
+            WorkerAgentInvoker workerInvoker) {
         this.orchestratorChatClient = orchestratorChatClient;
         this.userManagementClient = userManagementClient;
+        this.workerInvoker = workerInvoker;
+    }
+
+    /**
+     * 待ち時間ストリーミング用の軽量入口。
+     * CustomerIntent のみを 1 回呼び出し、行き先・スキルレベル等を返す。
+     * フルオーケストレーション (orchestrate) より大幅に高速。
+     */
+    public CustomerIntentResult extractIntentOnly(OrchestratorRequest request) {
+        String sessionId = request.sessionId() == null || request.sessionId().isBlank()
+                ? UUID.randomUUID().toString()
+                : request.sessionId();
+        log.info("intentOnly start: userId={}, sessionId={}", request.userId(), sessionId);
+        CustomerIntentResult result = workerInvoker.invokeCustomerIntent(
+                request.userId(), request.message(), sessionId);
+        log.info("intentOnly done: destination={}",
+                result != null && result.constraints() != null ? result.constraints().destination() : null);
+        return result;
     }
 
     public OrchestratorResponse orchestrate(OrchestratorRequest request, String jwtToken) {

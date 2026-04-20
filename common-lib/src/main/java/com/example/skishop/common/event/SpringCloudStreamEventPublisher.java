@@ -45,12 +45,14 @@ public class SpringCloudStreamEventPublisher implements EventPublisher {
                 log.info("Event sent to Kafka: type={}, eventId={}, correlationId={}",
                         event.eventType(), event.eventId(), event.correlationId());
             } else {
-                throw new EventPublishException(
-                        "Failed to send event: eventId=" + event.eventId());
+                log.warn("Event not delivered (no subscribers on binding '{}'): type={}, eventId={}",
+                        defaultBindingName, event.eventType(), event.eventId());
             }
         } catch (JsonProcessingException e) {
-            throw new EventPublishException(
-                    "Failed to serialize event: eventId=" + event.eventId(), e);
+            log.warn("Failed to serialize event: eventId={}, reason={}", event.eventId(), e.getMessage());
+        } catch (Exception e) {
+            log.warn("Event publishing failed (best effort, continuing): type={}, eventId={}, reason={}",
+                    event.eventType(), event.eventId(), e.getMessage());
         }
     }
 }

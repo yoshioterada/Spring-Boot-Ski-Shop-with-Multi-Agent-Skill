@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-runtime-monolith
+  namespace: skishop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-runtime-monolith
+  template:
+    metadata:
+      labels:
+        app: agent-runtime-monolith
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: skishop-sa
+      volumes:
+      - name: secrets-store
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: skishop-secrets
+      containers:
+      - name: agent-runtime-monolith
+        image: <ACR_LOGIN_SERVER>/agent-runtime-monolith:latest
+        ports:
+        - containerPort: 8100
+        volumeMounts:
+        - name: secrets-store
+          mountPath: /mnt/secrets-store
+          readOnly: true
+        env:
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: JWT_SECRET
+        - name: INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: INTERNAL_API_KEY
+        - name: AZURE_OPENAI_API_KEY
+          value: "9ckb6mNQJJ7En47GfmWZNbHo08N8osdtTjA6d5thx2bYuIVCvRnrJQQJ99CCACi0881XJ3w3AAABACOG2V8F"
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: AZURE_OPENAI_ENDPOINT
+        - name: AZURE_OPENAI_DEPLOYMENT
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: AZURE_OPENAI_DEPLOYMENT
+        - name: USER_MANAGEMENT_SERVICE_URL
+          value: "http://user-management-service:8081"
+        - name: INVENTORY_MANAGEMENT_SERVICE_URL
+          value: "http://inventory-management-service:8082"
+        - name: INVENTORY_SERVICE_URL
+          value: "http://inventory-management-service:8082"
+        - name: SALES_MANAGEMENT_SERVICE_URL
+          value: "http://sales-management-service:8083"
+        - name: SALES_SERVICE_URL
+          value: "http://sales-management-service:8083"
+        - name: PAYMENT_CART_SERVICE_URL
+          value: "http://payment-cart-service:8084"
+        - name: POINT_SERVICE_URL
+          value: "http://point-service:8085"
+        - name: COUPON_SERVICE_URL
+          value: "http://coupon-service:8088"
+        - name: AI_SERVICE_URL
+          value: "http://ai-support-service:8087"
+        - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: KAFKA_BOOTSTRAP_SERVERS
+        - name: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL
+        - name: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM
+        - name: EVENTHUB_CS
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: EVENTHUB_CS
+        - name: SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG
+          value: "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"$ConnectionString\" password=\"$(EVENTHUB_CS)\";"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        readinessProbe:
+          tcpSocket:
+            port: 8100
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 6
+        livenessProbe:
+          tcpSocket:
+            port: 8100
+          initialDelaySeconds: 180
+          periodSeconds: 20
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-runtime-monolith
+  namespace: skishop
+spec:
+  selector:
+    app: agent-runtime-monolith
+  ports:
+  - port: 8100
+    targetPort: 8100
+  type: ClusterIP

@@ -3,7 +3,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   AlertTriangle,
+  ArrowDown,
   ArrowDownToLine,
+  ArrowUp,
+  ArrowUpDown,
   ArrowUpFromLine,
   ChevronDown,
   ChevronUp,
@@ -13,7 +16,7 @@ import {
   Search,
   TrendingUp,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -148,6 +151,8 @@ export default function AdminInventoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [lowStockOnly, setLowStockOnly] = useState(false);
+  /** 「現在庫」列のソート方向。null = ソートなし（API 返却順） */
+  const [stockSortDir, setStockSortDir] = useState<'asc' | 'desc' | null>(null);
 
   // Low stock alerts
   const [lowStockItems, setLowStockItems] = useState<LowStockItem[]>([]);
@@ -316,6 +321,32 @@ export default function AdminInventoryPage() {
     }
   };
 
+  /**
+   * 「現在庫」ダブルクリックソート：desc → asc → ソート解除 の 3 状態をサイクルする。
+   */
+  const handleStockSortToggle = () => {
+    setStockSortDir((prev) => {
+      if (prev === null) return 'desc';
+      if (prev === 'desc') return 'asc';
+      return null;
+    });
+  };
+
+  /**
+   * サーバ返却順を保ちつつ、現在ページの表示順だけを stockSortDir で並べ替える。
+   * クライアントサイドソートのためページをまたぎだソートではない点に注意。
+   */
+  const sortedItems = useMemo(() => {
+    if (!stockSortDir) return items;
+    const copy = [...items];
+    copy.sort((a, b) =>
+      stockSortDir === 'asc'
+        ? a.currentStock - b.currentStock
+        : b.currentStock - a.currentStock,
+    );
+    return copy;
+  }, [items, stockSortDir]);
+
   /* --- Render --- */
 
   return (
@@ -349,7 +380,9 @@ export default function AdminInventoryPage() {
           {alertsOpen && (
             <CardContent className="pt-0">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {lowStockItems.map((ls) => (
+                {[...lowStockItems]
+                  .sort((a, b) => a.currentStock - b.currentStock)
+                  .map((ls) => (
                   <div
                     key={ls.productId}
                     className="bg-muted/50 flex items-center justify-between rounded-md p-3 text-sm"
@@ -484,7 +517,29 @@ export default function AdminInventoryPage() {
                   </TableHead>
                   <TableHead>商品名</TableHead>
                   <TableHead>SKU</TableHead>
-                  <TableHead className="text-right">現在庫</TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={handleStockSortToggle}
+                      className="inline-flex items-center gap-1 hover:text-primary cursor-pointer select-none"
+                      title={
+                        stockSortDir === 'desc'
+                          ? '現在庫を昇順にソート'
+                          : stockSortDir === 'asc'
+                            ? 'ソートを解除'
+                            : '現在庫を降順にソート'
+                      }
+                    >
+                      現在庫
+                      {stockSortDir === 'asc' ? (
+                        <ArrowUp className="size-3.5" />
+                      ) : stockSortDir === 'desc' ? (
+                        <ArrowDown className="size-3.5" />
+                      ) : (
+                        <ArrowUpDown className="size-3.5 opacity-50" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">引当済</TableHead>
                   <TableHead className="text-right">有効在庫</TableHead>
                   <TableHead>ステータス</TableHead>
@@ -492,7 +547,7 @@ export default function AdminInventoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => (
+                {sortedItems.map((item) => (
                   <TableRow
                     key={item.productId}
                     className="cursor-pointer"

@@ -445,3 +445,82 @@ docker exec skishop-agent-runtime sh -c \
 | Orchestrator が 401 返却 | フロントから JWT 未送信 | フロント側で `Authorization: Bearer <token>` を付与 |
 | `/api/v1/agents/**` が 404 | api-gateway が意図的にブロック中（仕様） | 内部呼び出し専用。外部公開不可 |
 | Tool 呼び出しがログに残らない | `agents.web.enabled=false` で Controller 無効化 | `AGENTS_WEB_ENABLED=true` を確認 |
+
+---
+
+## AI Analyzer 運用手順 (P7)
+
+### LLM 障害時の復旧手順
+
+1. **確認**: Grafana 「AI Analyzer」ダッシュボードでエラー率を確認
+2. **CircuitBreaker 状態確認**:
+   ```bash
+   curl http://localhost:8087/actuator/health | jq '.components.circuitBreakers'
+   ```
+3. **Azure OpenAI ステータス確認**: [Azure Status](https://status.azure.com/) を確認
+4. **自動回復待機**: CircuitBreaker は `waitDurationInOpenState` (60秒) 後に HALF_OPEN → 成功すれば CLOSED
+5. **手動復旧**: Azure 側が復旧しない場合は F1 チャットを一時無効化:
+   ```bash
+   # application.properties で一時無効化
+   curl -X POST http://localhost:8087/actuator/env \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"app.ai-analyzer.f1.enabled","value":"false"}'
+   ```
+
+### キャッシュ手動クリア手順
+
+F3 週次サマリーのキャッシュ（MongoDB）を手動クリアする場合:
+
+```bash
+# MongoDB に接続
+docker exec -it mongodb mongosh -u root -p password
+
+# skishop_ai DB の週次サマリーを削除
+use skishop_ai
+db.weekly_summaries.deleteMany({})
+
+# 手動再生成
+curl -X POST http://localhost:8090/api/v1/admin/ai-analyzer/weekly-summary/refresh \
+  -H 'Authorization: Bearer <admin-jwt>'
+```
+
+### クーポン誤発行時のロールバック手順 (F4)
+
+1. **発行済みクーポンの特定**:
+   ```sql
+   -- coupon-service の PostgreSQL
+   SELECT * FROM dead_stock_actions
+   WHERE created_at > NOW() - INTERVAL '1 hour'
+   ORDER BY created_at DESC;
+   ```
+2. **クーポン無効化**: coupon-service の管理 API でクーポンを無効化:
+   ```bash
+   curl -X DELETE http://localhost:8088/api/v1/coupons/{couponId} \
+     -H 'X-Internal-Api-Key: <key>'
+   ```
+3. **監査ログの確認**:
+   ```bash
+   docker exec -it mongodb mongosh -u root -p password
+   use skishop_ai
+   db.llm_audit_logs.find({ featureId: "F4" }).sort({ createdAt: -1 }).limit(10)
+   ```
+
+### コスト超過時の F1 一時無効化手順 (D-COM-06)
+
+月次 LLM コストが $30 を超えた場合:
+
+1. **コスト確認**: Grafana 「月次コスト (USD)」パネルを確認
+2. **F1 チャットの制限**:
+   - 方法 A: セッション当たりターン数を減少 (8 → 4)
+   - 方法 B: F1 エンドポイントを一時無効化
+3. **コスト主因の特定**: `/actuator/prometheus` で `ai_analyzer_tokens_total` を endpoint 別に確認
+4. **恒久対策**: max-completion-tokens の削減、キャッシュ強化を検討
+
+### アラート対応一覧
+
+| アラート名 | 対応手順 |
+|------------|----------|
+| AiAnalyzerHighErrorRate | LLM 障害復旧手順を実行 |
+| AiAnalyzerCircuitBreakerOpen | Azure OpenAI ステータス確認 → 自動回復待機 |
+| AiAnalyzerHighMonthlyCost | コスト超過手順を実行 |
+| AiAnalyzerWeeklyBatchFailed | ログ確認 → 手動 refresh API 実行 |

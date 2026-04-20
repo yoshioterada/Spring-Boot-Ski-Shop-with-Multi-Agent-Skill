@@ -126,8 +126,8 @@ export const authOptions: NextAuthOptions = {
       name: 'azure-skishop.session-token',
       options: {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: (process.env.NEXTAUTH_URL ?? '').startsWith('https://'),
+        sameSite: 'lax',
         path: '/',
       },
     },

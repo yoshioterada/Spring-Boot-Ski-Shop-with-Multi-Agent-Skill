@@ -3,11 +3,15 @@
 import { Bot, LogIn, Send, Sparkles, User } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import { TipPanel } from '@/components/agent/tip-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { recommendWithAgents, type OrchestratorResponse } from '@/lib/orchestrator-client';
+import { useAgentStream } from '@/hooks/use-agent-stream';
+import { generateUUID } from '@/lib/uuid';
+
+import type { OrchestratorResponse } from '@/lib/orchestrator-client';
 
 interface ChatTurn {
   role: 'user' | 'assistant';
@@ -17,67 +21,105 @@ interface ChatTurn {
 }
 
 /**
- * Multi-Agent Orchestrator チャット画面。
- * 自然言語で要望を送信すると、Orchestrator が天気・装備・クーポン・在庫の各 Worker を
- * 統合した結果を JSON として返却し、構造化表示する。
+ * AI 推奨結果から、利用者向けのアシスタント発話テキストを組み立てる。
+ *
+ * Multi-Agent Orchestrator は推奨商品を実カートに自動追加するため
+ * (payment-cart-service の CartBuildService.persistToUserCart 参照)、
+ * 利用者がそれを必ず認識できるよう、本文末尾に「カート追加 + 確認のお願い」の
+ * 案内文を必ず付与する。
+ */
+function composeAssistantText(result: OrchestratorResponse): string {
+  const head = (result.orchestrationSummary ?? '').trim() || '推奨内容を取得しました。';
+  const items = result.quote?.items ?? [];
+  if (items.length === 0) {
+    return head;
+  }
+  const itemList = items
+    .map((it) => `・${it.productName} × ${it.quantity}（¥${it.lineTotal.toLocaleString()}）`)
+    .join('\n');
+  const total = result.quote ? `合計 ¥${result.quote.totalAmount.toLocaleString()}` : '';
+  const cartNotice =
+    '\n\n🛒 上記の商品はお客様のカートにすでに追加されています。\n' +
+    `${itemList}\n${total}\n\n` +
+    'カートの中身は画面右上の「カート」アイコンからご確認いただけます。\n' +
+    '内容を見て、必要に応じて数量の変更や、不要な商品の削除をお願いします。\n' +
+    'そのままご購入手続きに進むこともできますので、ぜひご活用ください。';
+  return head + cartNotice;
+}
+
+/**
+ * Multi-Agent Orchestrator チャット画面 (SSE 対応版)。
+ *
+ * 待機中、右側パネルに行き先に応じた "耳寄り情報" を 8 秒ごとにストリーミング表示する。
+ * 詳細仕様: design-docs/add-info-2-customer-spec.md
  */
 export default function OrchestratorChatPage() {
   const { data: session, status } = useSession();
-  const isAuthenticated = status === 'authenticated' && Boolean((session as unknown as { accessToken?: string })?.accessToken);
+  const isAuthenticated =
+    status === 'authenticated' &&
+    Boolean((session as unknown as { accessToken?: string })?.accessToken);
   const [input, setInput] = useState('');
   const [turns, setTurns] = useState<ChatTurn[]>([]);
-  const [loading, setLoading] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
   const [couponCode, setCouponCode] = useState('');
+  // Note: sessionId is not used in rendered HTML output, so SSR/CSR UUID difference is safe
+  const [sessionId] = useState(() => `web-${generateUUID()}`);
 
-  // セッション ID は会話単位で固定（Orchestrator 側で会話履歴を将来活用予定）
-  const [sessionId] = useState(() => `web-${crypto.randomUUID()}`);
+  const { start, reset, phase, intent, tips, result, error, startedAt, completedAt } =
+    useAgentStream();
+
+  const loading = phase === 'INTENT' || phase === 'ORCHESTRATING';
+  const lastTurnIsUser = turns.length > 0 && turns[turns.length - 1].role === 'user';
+
+  const lastResultRef = useRef<OrchestratorResponse | null>(null);
+  const lastErrorRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (result && result !== lastResultRef.current) {
+      lastResultRef.current = result;
+      setTurns((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: composeAssistantText(result),
+          data: result,
+        },
+      ]);
+    }
+  }, [result]);
+
+  useEffect(() => {
+    if (error && error !== lastErrorRef.current && phase === 'ERROR') {
+      lastErrorRef.current = error;
+      setTurns((prev) => [
+        ...prev,
+        { role: 'assistant', text: '申し訳ありません、エラーが発生しました', error },
+      ]);
+    }
+  }, [error, phase]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || loading) return;
 
-    const userTurn: ChatTurn = { role: 'user', text: trimmed };
-    setTurns((prev) => [...prev, userTurn]);
+    setTurns((prev) => [...prev, { role: 'user', text: trimmed }]);
     setInput('');
-    setLoading(true);
+    lastResultRef.current = null;
+    lastErrorRef.current = null;
 
-    try {
-      // 未ログイン時は guest を userId として送信（Orchestrator 側はゲスト推奨にフォールバック）
-      const userId = (session?.user?.id as string | undefined) ?? 'guest';
-      const bearer = (session as unknown as { accessToken?: string })?.accessToken;
-      const response = await recommendWithAgents(
-        {
-          userId,
-          message: trimmed,
-          sessionId,
-          couponCode: couponCode.trim() || undefined,
-          usePoints,
-        },
-        bearer,
-      );
-      setTurns((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          text: response.orchestrationSummary || '回答を取得しました',
-          data: response,
-        },
-      ]);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '通信エラーが発生しました';
-      setTurns((prev) => [
-        ...prev,
-        { role: 'assistant', text: '申し訳ありません、エラーが発生しました', error: message },
-      ]);
-    } finally {
-      setLoading(false);
-    }
+    const userId = (session?.user?.id as string | undefined) ?? 'guest';
+    await start({
+      userId,
+      message: trimmed,
+      sessionId,
+      couponCode: couponCode.trim() || undefined,
+      usePoints,
+    });
   };
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
+    <div className="container mx-auto max-w-7xl px-4 py-8">
       <header className="mb-6 flex items-center gap-3">
         <Sparkles className="h-7 w-7 text-blue-600" aria-hidden />
         <div>
@@ -111,59 +153,116 @@ export default function OrchestratorChatPage() {
         </div>
       )}
 
-      <section
-        aria-label="会話履歴"
-        className="mb-6 min-h-[20rem] space-y-4 rounded-lg border bg-card p-4"
-      >
-        {turns.length === 0 && (
-          <div className="text-center text-sm text-muted-foreground">
-            <p>例: 「来週末の白馬で初心者向けのスキー一式を5万円以内で揃えたい」</p>
-            <p className="mt-2 text-xs">
-              ※ 複数の AI エージェントが連携して推論するため、回答まで 10～20 分かかることがあります。送信後はタブを閉じずにお待ちください。
-            </p>
-          </div>
-        )}
-        {turns.map((turn, idx) => (
-          <ChatBubble key={idx} turn={turn} />
-        ))}
-        {loading && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Bot className="h-4 w-4 animate-pulse" aria-hidden /> エージェントが推論中... <span className="text-xs">(最大 20 分程度かかります)</span>
-          </div>
-        )}
-      </section>
+      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0">
+          <section
+            aria-label="会話履歴"
+            className="mb-4 min-h-[20rem] space-y-4 rounded-lg border bg-card p-4"
+          >
+            {turns.length === 0 && (
+              <div className="text-center text-sm text-muted-foreground">
+                <p>例: 「来週末の白馬で初心者向けのスキー一式を5万円以内で揃えたい」</p>
+                <p className="mt-2 text-xs">
+                  ※ 複数の AI エージェントが連携して推論するため、回答まで数分〜最大 20 分かかることがあります。
+                  待ち時間中は右側に行き先のお役立ち情報をお届けします。
+                </p>
+              </div>
+            )}
+            {turns.map((turn, idx) => (
+              <ChatBubble key={idx} turn={turn} />
+            ))}
+            {loading && lastTurnIsUser && (
+              <div className="flex items-start gap-3">
+                <Bot
+                  className="mt-1 h-5 w-5 shrink-0 animate-pulse text-blue-600"
+                  aria-hidden
+                />
+                <div className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
+                  エージェントが推論中です。
+                  {phase === 'INTENT'
+                    ? ' まずは行き先を読み取っています…'
+                    : ' 装備・在庫・クーポンを最適化しています…'}
+                  <p className="mt-1 text-xs">
+                    お待ちの間、右側に行き先のお役立ち情報をお届けしますね。
+                  </p>
+                </div>
+              </div>
+            )}
+          </section>
 
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <div className="flex flex-wrap gap-3 text-sm">
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={usePoints}
-              onChange={(e) => setUsePoints(e.target.checked)}
-              className="h-4 w-4"
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="flex flex-wrap gap-3 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={usePoints}
+                  onChange={(e) => setUsePoints(e.target.checked)}
+                  className="h-4 w-4"
+                  disabled={loading}
+                />
+                ポイントを使う
+              </label>
+              <Input
+                placeholder="クーポンコード (任意)"
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value)}
+                className="w-48"
+                disabled={loading}
+              />
+              {(phase === 'COMPLETED' || phase === 'ERROR' || phase === 'CANCELLED') && (
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="text-xs text-muted-foreground underline hover:text-foreground"
+                >
+                  状態をリセット
+                </button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                placeholder={
+                  isAuthenticated
+                    ? 'ご要望を自然な言葉で入力してください'
+                    : 'ログイン後に利用できます'
+                }
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={loading || !isAuthenticated}
+                aria-label="エージェントへのメッセージ"
+              />
+              <Button
+                type="submit"
+                disabled={loading || !input.trim() || !isAuthenticated}
+              >
+                <Send className="mr-2 h-4 w-4" aria-hidden /> 送信
+              </Button>
+            </div>
+          </form>
+        </div>
+
+        <aside className="min-w-0 md:sticky md:top-4 md:self-start">
+          {phase === 'IDLE' ? (
+            <div className="rounded-xl border border-dashed bg-muted/30 p-4 text-xs text-muted-foreground">
+              <div className="mb-2 flex items-center gap-2 font-semibold text-foreground">
+                <Sparkles className="h-4 w-4 text-blue-600" aria-hidden /> 待ち時間ガイド
+              </div>
+              <p>
+                ご質問を送信すると、AI が処理中の待ち時間にこのエリアで行き先 (例: 志賀高原・白馬・ニセコ)
+                のお役立ち情報を 8 秒ごとに紹介します。
+              </p>
+            </div>
+          ) : (
+            <TipPanel
+              phase={phase}
+              intent={intent}
+              tips={tips}
+              startedAt={startedAt}
+              completedAt={completedAt}
             />
-            ポイントを使う
-          </label>
-          <Input
-            placeholder="クーポンコード (任意)"
-            value={couponCode}
-            onChange={(e) => setCouponCode(e.target.value)}
-            className="w-48"
-          />
-        </div>
-        <div className="flex gap-2">
-          <Input
-            placeholder={isAuthenticated ? 'ご要望を自然な言葉で入力してください' : 'ログイン後に利用できます'}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            disabled={loading || !isAuthenticated}
-            aria-label="エージェントへのメッセージ"
-          />
-          <Button type="submit" disabled={loading || !input.trim() || !isAuthenticated}>
-            <Send className="mr-2 h-4 w-4" aria-hidden /> 送信
-          </Button>
-        </div>
-      </form>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }
@@ -192,21 +291,14 @@ function ChatBubble({ turn }: { turn: ChatTurn }) {
   );
 }
 
-function RecommendationDetail({ data }: { data: OrchestratorResponse }) {
-  return (
+function RecommendationDetail({ data }: { data: OrchestratorResponse }) {  return (
     <div className="mt-3 space-y-3 border-t border-border pt-3 text-xs">
-      {data.intentSummary && (
-        <Section label="意図">{data.intentSummary}</Section>
-      )}
-      {data.weatherSummary && (
-        <Section label="天気">{data.weatherSummary}</Section>
-      )}
+      {data.intentSummary && <Section label="意図">{data.intentSummary}</Section>}
+      {data.weatherSummary && <Section label="天気">{data.weatherSummary}</Section>}
       {data.equipmentRecommendation && (
         <Section label="推奨装備">{data.equipmentRecommendation}</Section>
       )}
-      {data.couponSummary && (
-        <Section label="クーポン">{data.couponSummary}</Section>
-      )}
+      {data.couponSummary && <Section label="クーポン">{data.couponSummary}</Section>}
       {data.quote && (
         <div>
           <h3 className="mb-2 font-semibold">見積もり</h3>

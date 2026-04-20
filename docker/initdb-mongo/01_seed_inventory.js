@@ -77,12 +77,12 @@ const skis = [
   product("SKI-003", "ATOMIC Bent Chetler 100",        "ATOMIC",    "cat-ski",  110000, 15,  "フリーライド向けオールマウンテンスキー。パウダーからゲレンデまで幅広く対応。",             { length: "180cm", radius: "18m",   type: "フリーライド" },    ["フリーライド","中上級者","パウダー"]),
   product("SKI-004", "SALOMON S/Race FIS GS",          "SALOMON",   "cat-ski",  178000,  6,  "ワールドカップ GS レーシングスキー。最高峰のグリップ力と安定性。",                      { length: "185cm", radius: "21m",   type: "GS" },            ["レーシング","上級者","GS","FIS"]),
   product("SKI-005", "SALOMON QST 98",                 "SALOMON",   "cat-ski",   98000, 18,  "オールマウンテンフリーライドスキー。あらゆるコンディションに対応する万能モデル。",          { length: "176cm", radius: "17m",   type: "オールマウンテン" },["オールマウンテン","中上級者","フリーライド"]),
-  product("SKI-006", "SALOMON Stance 96",              "SALOMON",   "cat-ski",   89000, 20,  "オールマウンテンスキー。カービングからパウダーまで快適に楽しめる。",                      { length: "174cm", radius: "16m",   type: "オールマウンテン" },["オールマウンテン","中級者"]),
+  product("SKI-006", "SALOMON Stance 96",              "SALOMON",   "cat-ski",   89000, 20,  "オールマウンテンスキー。カービングからパウダーまで快適に楽しめる。",                      { length: "174cm", radius: "16m",   type: "オールマウンテン" },["オールマウンテン","中級者","初中級者"]),
   product("SKI-007", "HEAD Supershape e-Speed",        "HEAD",      "cat-ski",  148000, 12,  "ハイパフォーマンス基礎スキー。EMC テクノロジーで振動を吸収し滑らかなターンを実現。",       { length: "170cm", radius: "13m",   type: "基礎" },           ["基礎","上級者","カービング"]),
   product("SKI-008", "HEAD World Cup Rebels e-GS",     "HEAD",      "cat-ski",  168000,  7,  "ワールドカップ GS モデル。卓越したエッジグリップと高速安定性。",                        { length: "180cm", radius: "20m",   type: "GS" },            ["レーシング","上級者","GS"]),
   product("SKI-009", "HEAD Kore 93",                   "HEAD",      "cat-ski",  105000, 14,  "軽量フリーライドスキー。グラフェン搭載で軽さとパワーを両立。",                          { length: "177cm", radius: "16.5m", type: "フリーライド" },    ["フリーライド","中上級者","軽量"]),
   product("SKI-010", "ROSSIGNOL Hero Elite ST Ti",     "ROSSIGNOL", "cat-ski",  135000, 11,  "技術選向け基礎スキー。精密なカービングターンが可能。",                                 { length: "167cm", radius: "13m",   type: "基礎" },           ["基礎","上級者","カービング"]),
-  product("SKI-011", "ROSSIGNOL Experience 82 Ti",     "ROSSIGNOL", "cat-ski",   88000, 22,  "中級者向けオールマウンテンスキー。快適な操作性とターン性能のバランスが秀逸。",             { length: "172cm", radius: "14m",   type: "オールマウンテン" },["オールマウンテン","中級者"]),
+  product("SKI-011", "ROSSIGNOL Experience 82 Ti",     "ROSSIGNOL", "cat-ski",   88000, 22,  "中級者向けオールマウンテンスキー。快適な操作性とターン性能のバランスが秀逸。",             { length: "172cm", radius: "14m",   type: "オールマウンテン" },["オールマウンテン","中級者","初中級者"]),
   product("SKI-012", "ROSSIGNOL Sender Ti",            "ROSSIGNOL", "cat-ski",  115000, 10,  "チタン補強のフリーライドスキー。パウダーでの浮力とハードパックでの安定性を両立。",          { length: "182cm", radius: "19m",   type: "フリーライド" },    ["フリーライド","上級者","パウダー"]),
   product("SKI-013", "VOLKL Racetiger SL",             "VOLKL",     "cat-ski",  145000,  9,  "SL レーシングスキー。クイックなエッジ切り替えと強力なグリップ。",                        { length: "165cm", radius: "12m",   type: "SL" },            ["レーシング","上級者","SL"]),
   product("SKI-014", "VOLKL Deacon 76",                "VOLKL",     "cat-ski",  128000, 13,  "基礎・技術系スキー。高速カービングに最適なフレックスとトーション。",                      { length: "168cm", radius: "14.5m", type: "基礎" },           ["基礎","上級者","カービング"]),
@@ -96,7 +96,7 @@ const skis = [
   product("SKI-022", "NORDICA Enforcer 100",           "NORDICA",   "cat-ski",  105000, 15,  "フリーライドオールマウンテンスキー。どんなコンディションでも力強い滑りを実現。",              { length: "179cm", radius: "18.5m", type: "フリーライド" },    ["フリーライド","オールマウンテン","中上級者"]),
   product("SKI-023", "BLIZZARD Brahma 88",             "BLIZZARD",  "cat-ski",   98000, 18,  "オールマウンテンスキー。カーボンフリップコアで軽量かつパワフル。",                         { length: "173cm", radius: "15m",   type: "オールマウンテン" },["オールマウンテン","中上級者"]),
   product("SKI-024", "BLIZZARD Rustler 9",             "BLIZZARD",  "cat-ski",  108000, 11,  "フリーライドスキー。パウダーでの浮力と整地での操作性を両立。",                            { length: "180cm", radius: "18m",   type: "フリーライド" },    ["フリーライド","パウダー","中上級者"]),
-  product("SKI-025", "ELAN Wingman 82 Ti",             "ELAN",      "cat-ski",   85000, 20,  "オールマウンテンスキー。安定感のある乗り味で幅広いスキーヤーに対応。",                     { length: "170cm", radius: "14m",   type: "オールマウンテン" },["オールマウンテン","中級者"]),
+  product("SKI-025", "ELAN Wingman 82 Ti",             "ELAN",      "cat-ski",   85000, 20,  "オールマウンテンスキー。安定感のある乗り味で幅広いスキーヤーに対応。",                     { length: "170cm", radius: "14m",   type: "オールマウンテン" },["オールマウンテン","中級者","初心者","初中級者"]),
   product("SKI-026", "ELAN Ripstick 96",               "ELAN",      "cat-ski",   95000, 16,  "フリーライドスキー。軽量で取り回しが良くバックカントリーにも最適。",                       { length: "176cm", radius: "16m",   type: "フリーライド" },    ["フリーライド","バックカントリー","中上級者"]),
   product("SKI-027", "DYNASTAR Speed Zone 10 Ti",      "DYNASTAR",  "cat-ski",  118000, 12,  "ハイスピードカービングスキー。チタンプレート搭載で高い安定性。",                          { length: "172cm", radius: "14m",   type: "基礎" },           ["基礎","上級者","カービング"]),
   product("SKI-028", "OGASAKA TC-SS",                  "OGASAKA",   "cat-ski",  132000,  9,  "技術選用基礎スキー。日本製ならではの精緻な作りと繊細なレスポンス。",                      { length: "165cm", radius: "12.5m", type: "基礎" },           ["基礎","技術選","上級者"]),
@@ -113,7 +113,7 @@ const boots = [
   product("BTS-003", "ATOMIC Hawx Prime 120 S",          "ATOMIC",    "cat-boots", 72000, 18, "中上級者向けフリーライドブーツ。快適さとパフォーマンスのバランスが秀逸。",                   { flex: "120", lastWidth: "100mm", buckles: "4" }, ["オールマウンテン","中上級者"]),
   product("BTS-004", "SALOMON S/Pro Alpha 130",          "SALOMON",   "cat-boots", 95000, 12, "レーシング対応ハイパフォーマンスブーツ。カスタムシェルフィットテクノロジー搭載。",            { flex: "130", lastWidth: "97mm",  buckles: "4" }, ["レーシング","上級者"]),
   product("BTS-005", "SALOMON S/Pro Supra BOA 120",      "SALOMON",   "cat-boots", 82000, 16, "BOA フィットシステム搭載。素早い着脱と精密なフィット調整が可能。",                        { flex: "120", lastWidth: "100mm", buckles: "3+BOA" }, ["オールマウンテン","中上級者","BOA"]),
-  product("BTS-006", "SALOMON S/Pro MV 100",             "SALOMON",   "cat-boots", 58000, 22, "中級者向けミディアムボリュームブーツ。長時間の快適さを追求。",                            { flex: "100", lastWidth: "102mm", buckles: "4" }, ["オールマウンテン","中級者"]),
+  product("BTS-006", "SALOMON S/Pro MV 100",             "SALOMON",   "cat-boots", 58000, 22, "中級者向けミディアムボリュームブーツ。長時間の快適さを追求。",                            { flex: "100", lastWidth: "102mm", buckles: "4" }, ["オールマウンテン","中級者","初中級者"]),
   product("BTS-007", "HEAD Raptor 140 RS",               "HEAD",      "cat-boots",105000,  8, "トップレーシングブーツ。ワールドカップでも使用されるハイエンドモデル。",                    { flex: "140", lastWidth: "95mm",  buckles: "4" }, ["レーシング","上級者","FIS"]),
   product("BTS-008", "HEAD Formula 130",                 "HEAD",      "cat-boots", 78000, 14, "オールマウンテンハイパフォーマンスブーツ。快適さを保ちながら高い操作性を発揮。",              { flex: "130", lastWidth: "100mm", buckles: "4" }, ["オールマウンテン","上級者"]),
   product("BTS-009", "HEAD Edge LYT 100",                "HEAD",      "cat-boots", 52000, 25, "軽量コンフォートブーツ。初中級者でも扱いやすい柔軟なフレックス。",                        { flex: "100", lastWidth: "104mm", buckles: "4" }, ["オールマウンテン","初中級者","軽量"]),
@@ -131,9 +131,9 @@ const boots = [
   product("BTS-021", "DALBELLO DRS 130",                 "DALBELLO",  "cat-boots", 88000, 10, "レーシングブーツ。高い剛性と優れたパワー伝達で攻めの滑りに対応。",                        { flex: "130", lastWidth: "96mm",  buckles: "4" }, ["レーシング","上級者"]),
   product("BTS-022", "DALBELLO Lupo AX 120",             "DALBELLO",  "cat-boots", 78000, 14, "ツーリングブーツ。軽量設計でハイクアップも軽快に。",                                     { flex: "120", lastWidth: "99mm",  buckles: "3" }, ["バックカントリー","ツーリング","中上級者"]),
   product("BTS-023", "FISCHER RC4 The Curv 130",         "FISCHER",   "cat-boots", 92000, 10, "ハイパフォーマンスブーツ。バキュームフィットで自分だけのフィット感。",                      { flex: "130", lastWidth: "97mm",  buckles: "4" }, ["レーシング","基礎","上級者"]),
-  product("BTS-024", "FISCHER RC One 110",               "FISCHER",   "cat-boots", 55000, 20, "中級者向けスポーツブーツ。軽量で扱いやすいフレックス設計。",                              { flex: "110", lastWidth: "102mm", buckles: "4" }, ["オールマウンテン","中級者"]),
+  product("BTS-024", "FISCHER RC One 110",               "FISCHER",   "cat-boots", 55000, 20, "中級者向けスポーツブーツ。軽量で扱いやすいフレックス設計。",                              { flex: "110", lastWidth: "102mm", buckles: "4" }, ["オールマウンテン","中級者","初中級者"]),
   product("BTS-025", "K2 Recon Pro 130",                 "K2",        "cat-boots", 82000, 12, "ハイパフォーマンスフリーライドブーツ。パワフルかつ快適な滑りを提供。",                     { flex: "130", lastWidth: "98mm",  buckles: "4" }, ["フリーライド","上級者"]),
-  product("BTS-026", "K2 BFC 100",                       "K2",        "cat-boots", 48000, 22, "ワイドフィットコンフォートブーツ。長時間でも快適に過ごせる設計。",                         { flex: "100", lastWidth: "103mm", buckles: "4" }, ["オールマウンテン","中級者","ワイド"]),
+  product("BTS-026", "K2 BFC 100",                       "K2",        "cat-boots", 48000, 22, "ワイドフィットコンフォートブーツ。長時間でも快適に過ごせる設計。",                         { flex: "100", lastWidth: "103mm", buckles: "4" }, ["オールマウンテン","中級者","ワイド","初心者","初中級者"]),
   product("BTS-027", "FULL TILT Descendant 100",         "FULL TILT", "cat-boots", 52000, 18, "3 ピースデザインブーツ。フリースタイルスキーヤーに人気の柔軟なフレックス。",                { flex: "100", lastWidth: "102mm", buckles: "3" }, ["フリースタイル","パーク","中級者"]),
   product("BTS-028", "REXXAM R-EVO 130M",                "REXXAM",    "cat-boots", 88000, 11, "日本製レーシングブーツ。日本人の足型に合わせた専用ラスト設計。",                           { flex: "130", lastWidth: "98mm",  buckles: "4" }, ["レーシング","基礎","上級者"]),
   product("BTS-029", "REXXAM XX-97",                     "REXXAM",    "cat-boots", 68000, 15, "日本製コンフォートブーツ。幅広の足にも対応するワイドラスト。",                            { flex: "97",  lastWidth: "104mm", buckles: "4" }, ["オールマウンテン","中級者","ワイド"]),
@@ -337,13 +337,12 @@ print(">>> Inserted " + allProducts.length + " products (" +
 
 // ---------------------------------------------------------------------------
 // 10. インデックス作成
+// Note: sku, categoryId, status (products) および name (categories) の各インデックスは
+//       Spring Data MongoDB の @Indexed アノテーションで自動作成されるため、ここでは
+//       アノテーション管理外のインデックスのみ作成する。
 // ---------------------------------------------------------------------------
-db.products.createIndex({ sku: 1 }, { unique: true });
-db.products.createIndex({ categoryId: 1 });
-db.products.createIndex({ status: 1 });
 db.products.createIndex({ brand: 1 });
 db.products.createIndex({ name: "text", brand: "text", description: "text" });
-db.categories.createIndex({ name: 1 }, { unique: true });
 
 print(">>> Indexes created");
 print(">>> Seed complete!");

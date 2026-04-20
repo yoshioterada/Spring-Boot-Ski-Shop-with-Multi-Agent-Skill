@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/use-auth';
 import { formatCurrency } from '@/lib/format';
+import { generateUUID } from '@/lib/uuid';
 
 import type { CartResponse, OrderResponse, PaymentResponse } from '@/types/api';
 
@@ -173,7 +174,7 @@ export default function CheckoutPage() {
     setError('');
     setTimeoutMessage('');
 
-    const idempotencyKey = crypto.randomUUID();
+    const idempotencyKey = generateUUID();
     const shippingAddress = `〒${shipping.postalCode} ${shipping.prefecture}${shipping.city}${shipping.address}`;
 
     const controller = new AbortController();

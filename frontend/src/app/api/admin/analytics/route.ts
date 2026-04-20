@@ -54,10 +54,10 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type') || 'sales';
 
     const endpointMap: Record<string, string> = {
-      sales: '/api/v1/analytics/sales',
-      users: '/api/v1/analytics/users',
-      trends: '/api/v1/analytics/trends',
-      search: '/api/v1/analytics/search',
+      sales: '/api/v1/admin/orders/analytics/summary',
+      users: '/api/v1/admin/users/analytics/summary',
+      trends: '/api/v1/admin/orders/analytics/trends',
+      search: '/api/v1/products/analytics/search-summary',
     };
 
     const endpoint = endpointMap[type];

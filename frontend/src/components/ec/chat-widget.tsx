@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { generateUUID } from '@/lib/uuid';
 
 interface ChatMessage {
   id: string;
@@ -141,7 +142,7 @@ export function ChatWidget() {
     if (!content.trim()) return;
 
     const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       role: 'user',
       content: content.trim(),
       timestamp: new Date().toISOString(),
@@ -157,7 +158,7 @@ export function ChatWidget() {
         setMessages((prev) => [
           ...prev,
           {
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             role: 'assistant',
             content: 'AI チャットは現在ご利用いただけません。しばらくしてからお試しください。',
             timestamp: new Date().toISOString(),
@@ -185,7 +186,7 @@ export function ChatWidget() {
       setMessages((prev) => [
         ...prev,
         {
-          id: crypto.randomUUID(),
+          id: generateUUID(),
           role: 'assistant',
           content: reply,
           timestamp: new Date().toISOString(),
@@ -197,7 +198,7 @@ export function ChatWidget() {
       setMessages((prev) => [
         ...prev,
         {
-          id: crypto.randomUUID(),
+          id: generateUUID(),
           role: 'assistant',
           content:
             'AI チャットは現在ご利用いただけません。お問い合わせはお電話でも承っております。',
@@ -247,7 +248,7 @@ export function ChatWidget() {
       setMessages((prev) => [
         ...prev,
         {
-          id: crypto.randomUUID(),
+          id: generateUUID(),
           role: 'assistant',
           content: 'オペレーターへ接続をリクエストしました。しばらくお待ちください。',
           timestamp: new Date().toISOString(),
@@ -257,7 +258,7 @@ export function ChatWidget() {
       setMessages((prev) => [
         ...prev,
         {
-          id: crypto.randomUUID(),
+          id: generateUUID(),
           role: 'assistant',
           content: 'オペレーターへの接続に失敗しました。お手数ですがお電話をご利用ください。',
           timestamp: new Date().toISOString(),

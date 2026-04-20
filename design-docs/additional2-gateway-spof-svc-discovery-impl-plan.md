@@ -715,7 +715,7 @@ GRAFANA_PASSWORD=admin
 | PostgreSQL Flexible Server × 6 | `skishop-auth-db`, ... | 各 PostgreSQL サービス | Burstable B1ms〜 |
 | Cosmos DB for MongoDB vCore × 1 | `skishop-mongo` | inventory + ai-support | M25 |
 | Azure Key Vault × 1 | `skishop-kv` | 秘密情報一元管理 | Standard |
-| Azure Container Registry × 1 | `skishopcr` | Docker イメージ | Basic〜Standard |
+| Azure Container Registry × 1 | <ACR_NAME> | Docker イメージ | Basic〜Standard |
 | Azure Redis Cache × 1 | `skishop-redis` | Gateway rate limiting | C0〜 |
 | Azure Event Hubs × 1 | `skishop-eventhub` | Event Pub/Sub（Kafka プロトコル互換） | Standard (1 TU〜) |
 

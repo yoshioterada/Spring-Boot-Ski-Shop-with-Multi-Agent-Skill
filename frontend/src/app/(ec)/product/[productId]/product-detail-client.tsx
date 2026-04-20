@@ -23,7 +23,7 @@ import type { ProductResponse } from '@/types/api';
 
 interface ProductDetailData {
   product: ProductResponse;
-  similar: { products: Array<{ productId: string; score: number; reason: string }> } | null;
+  similar: { products: ProductResponse[] } | null;
 }
 
 export default function ProductDetailPage() {
@@ -76,22 +76,7 @@ export default function ProductDetailPage() {
   const maxQuantity = Math.min(product.availableQuantity, 10);
   const isOutOfStock = product.availableQuantity === 0;
 
-  const similarProducts: ProductResponse[] = (similar?.products || []).slice(0, 4).map((s, i) => ({
-    id: s.productId || `similar-${i}`,
-    sku: `SKU-SIM-${i}`,
-    name: s.reason || `関連商品 ${i + 1}`,
-    description: '',
-    brand: 'Azure Ski',
-    categoryId: product.categoryId,
-    regularPrice: product.regularPrice + (i - 2) * 2000,
-    salePrice: null,
-    currency: 'JPY',
-    stockQuantity: 10,
-    availableQuantity: 10,
-    status: 'ACTIVE' as const,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }));
+  const similarProducts: ProductResponse[] = (similar?.products || []).slice(0, 4);
 
   const handleAddToCart = () => {
     if (!isAuthenticated) {

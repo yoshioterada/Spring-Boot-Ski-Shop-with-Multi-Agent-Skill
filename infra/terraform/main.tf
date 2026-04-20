@@ -52,7 +52,7 @@ variable "environment" {
 variable "db_admin_username" {
   description = "PostgreSQL administrator username"
   type        = string
-  default     = "skishopadmin"
+  default     = "<DB_ADMIN_USER>"
   sensitive   = true
 }
 

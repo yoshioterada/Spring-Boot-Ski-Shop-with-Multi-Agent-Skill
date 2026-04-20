@@ -56,6 +56,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}` },
       body: JSON.stringify(body),
     });
+    // 204/205/304 は null body status のため NextResponse.json() でボディを持たせると TypeError になる
+    if (res.status === 204 || res.status === 205 || res.status === 304) {
+      return new NextResponse(null, { status: res.status });
+    }
     const data = await res.json().catch(() => null);
     return NextResponse.json(data ?? { status: 'ok' }, { status: res.status });
   } catch {

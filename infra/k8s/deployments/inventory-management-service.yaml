@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-management-service
+  namespace: skishop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory-management-service
+  template:
+    metadata:
+      labels:
+        app: inventory-management-service
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: skishop-sa
+      volumes:
+      - name: secrets-store
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: skishop-secrets
+      containers:
+      - name: inventory-management-service
+        image: <ACR_LOGIN_SERVER>/inventory-management-service:latest
+        ports:
+        - containerPort: 8082
+        volumeMounts:
+        - name: secrets-store
+          mountPath: /mnt/secrets-store
+          readOnly: true
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: COSMOS_CS
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: JWT_SECRET
+        - name: INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: INTERNAL_API_KEY
+        - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: KAFKA_BOOTSTRAP_SERVERS
+        - name: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL
+        - name: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM
+        - name: EVENTHUB_CS
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: EVENTHUB_CS
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: SPRING_PROFILES_ACTIVE
+        resources:
+          requests:
+            memory: "384Mi"
+            cpu: "100m"
+          limits:
+            memory: "768Mi"
+            cpu: "500m"
+        readinessProbe:
+          tcpSocket:
+            port: 8082
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 6
+        livenessProbe:
+          tcpSocket:
+            port: 8082
+          initialDelaySeconds: 180
+          periodSeconds: 20
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-management-service
+  namespace: skishop
+spec:
+  selector:
+    app: inventory-management-service
+  ports:
+  - port: 8082
+    targetPort: 8082
+  type: ClusterIP

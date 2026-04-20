@@ -17,7 +17,9 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -47,8 +49,9 @@ public class InternalInventoryController {
                 .filter(p -> maxPrice == null
                         || (p.getRegularPrice() != null
                                 && p.getRegularPrice().compareTo(BigDecimal.valueOf(maxPrice)) <= 0))
+                .filter(p -> matchesSkillLevel(p.getTags(), skillLevel))
                 .limit(20)
-                .map(p -> toProductCandidate(p, skillLevel))
+                .map(InternalInventoryController::toProductCandidate)
                 .toList();
         return ResponseEntity.ok(result);
     }
@@ -162,7 +165,7 @@ public class InternalInventoryController {
         return ResponseEntity.ok(ids);
     }
 
-    private static Map<String, Object> toProductCandidate(Product p, String skillLevel) {
+    private static Map<String, Object> toProductCandidate(Product p) {
         Map<String, Object> m = new HashMap<>();
         m.put("productId", p.getId());
         m.put("productName", p.getName());
@@ -171,9 +174,63 @@ public class InternalInventoryController {
         m.put("basePrice", p.getRegularPrice() == null ? BigDecimal.ZERO : p.getRegularPrice());
         m.put("isAvailable", (p.getStockQuantity() - p.getReservedQuantity()) > 0);
         m.put("stockQuantity", Math.max(0, p.getStockQuantity() - p.getReservedQuantity()));
-        m.put("skillLevelSuitability", skillLevel == null ? "ALL" : skillLevel);
-        m.put("weatherSuitability", "ANY");
-        m.put("attributes", Map.of());
+        m.put("skillLevelSuitability", deriveSkillLevelSuitability(p.getTags()));
+        m.put("weatherSuitability", deriveWeatherSuitability(p.getTags()));
+        m.put("attributes", p.getAttributes() == null ? Map.of() : p.getAttributes());
+        m.put("tags", p.getTags() == null ? List.of() : p.getTags());
         return m;
+    }
+
+    /** リクエスト skillLevel と商品 tags の許容関係。 */
+    private static final Map<String, Set<String>> SKILL_TAG_MATCH = Map.of(
+            "BEGINNER",     Set.of("初心者", "初中級者"),
+            "INTERMEDIATE", Set.of("中級者", "中上級者", "初中級者"),
+            "ADVANCED",     Set.of("上級者", "中上級者"),
+            "EXPERT",       Set.of("上級者"));
+
+    /** 商品 tag から canonical な skill 区分を推定する。 */
+    static String deriveSkillLevelSuitability(List<String> tags) {
+        if (tags == null || tags.isEmpty()) return "ALL";
+        boolean hasExpert = tags.contains("上級者");
+        boolean hasAdv = tags.contains("中上級者");
+        boolean hasInter = tags.contains("中級者");
+        boolean hasBegInter = tags.contains("初中級者");
+        boolean hasBeginner = tags.contains("初心者");
+        // 排他的に最も特徴的な区分を 1 つ選ぶ
+        if (hasExpert && !hasAdv && !hasInter && !hasBegInter && !hasBeginner) return "EXPERT";
+        if (hasAdv) return "ADVANCED";
+        if (hasInter || hasBegInter) return "INTERMEDIATE";
+        if (hasBeginner) return "BEGINNER";
+        return "ALL";
+    }
+
+    /** 商品 tag から地形・雪質適合度を推定する。 */
+    static String deriveWeatherSuitability(List<String> tags) {
+        if (tags == null || tags.isEmpty()) return "ALL_CONDITIONS";
+        if (tags.contains("パウダー")) return "POWDER";
+        if (tags.contains("バックカントリー")) return "POWDER";
+        if (tags.contains("カービング") || tags.contains("基礎") || tags.contains("レーシング")
+                || tags.contains("技術選")) return "GROOMED";
+        if (tags.contains("オールマウンテン") || tags.contains("フリーライド")
+                || tags.contains("フリースタイル")) return "ALL_CONDITIONS";
+        return "ALL_CONDITIONS";
+    }
+
+    /**
+     * 商品 tags がリクエスト skillLevel に適合するか判定する。
+     * - skillLevel 指定なし → 常に true
+     * - 商品にスキル系タグがない → ALL 扱いで true
+     * - 商品にスキル系タグがあれば、許容セットに 1 件以上含まれるか判定
+     */
+    static boolean matchesSkillLevel(List<String> tags, String skillLevel) {
+        if (skillLevel == null || skillLevel.isBlank()) return true;
+        Set<String> allowed = SKILL_TAG_MATCH.get(skillLevel.toUpperCase(Locale.ROOT));
+        if (allowed == null) return true;
+        if (tags == null || tags.isEmpty()) return true;
+        boolean hasAnySkillTag = tags.stream().anyMatch(t ->
+                "初心者".equals(t) || "初中級者".equals(t) || "中級者".equals(t)
+                        || "中上級者".equals(t) || "上級者".equals(t));
+        if (!hasAnySkillTag) return true; // 万能商品扱い
+        return tags.stream().anyMatch(allowed::contains);
     }
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertCircle, Loader2, Package, Search } from 'lucide-react';
+import { AlertCircle, Loader2, Package, Search, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -38,6 +38,14 @@ interface InventoryStatus {
   alert: InventoryAlert | null;
 }
 
+interface InventoryAnalysisResult {
+  items: InventoryStatus[];
+  overallSummary: string | null;
+  recommendedAction: string | null;
+  /** 商品 ID → 商品名のルックアップマップ（バックエンドが解決） */
+  productNames?: Record<string, string> | null;
+}
+
 const STATUS_BADGE: Record<AvailabilityStatus, { label: string; className: string }> = {
   AVAILABLE: {
     label: '在庫あり',
@@ -62,11 +70,8 @@ const SEVERITY_BADGE: Record<AlertSeverity, string> = {
 export default function AdminInventoryAgentPage() {
   const [picked, setPicked] = useState<PickedProduct[]>([]);
   const [requiredQuantity, setRequiredQuantity] = useState<number>(1);
-  const [results, setResults] = useState<InventoryStatus[] | null>(null);
+  const [analysis, setAnalysis] = useState<InventoryAnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // 結果から「商品ID → 表示名」の即時参照マップを構築（API が name を返さない時の補完）
-  const idToName = new Map<string, string>(picked.map((p) => [p.id, p.name]));
 
   const handleSubmit = async () => {
     const productIds = picked.map((p) => p.id);
@@ -76,7 +81,7 @@ export default function AdminInventoryAgentPage() {
     }
 
     setLoading(true);
-    setResults(null);
+    setAnalysis(null);
     try {
       const res = await fetch('/api/admin/agents/inventory/check', {
         method: 'POST',
@@ -85,17 +90,40 @@ export default function AdminInventoryAgentPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data?.error ?? '在庫確認に失敗しました');
+        toast.error(data?.error ?? 'AI 分析に失敗しました');
         return;
       }
-      setResults(Array.isArray(data) ? data : []);
-      toast.success(`${Array.isArray(data) ? data.length : 0} 件の在庫情報を取得しました`);
+      // 旧 /check (List<InventoryStatus>) 形式と新 /analyze (InventoryAnalysisResult) 形式の両対応
+      const normalized: InventoryAnalysisResult = Array.isArray(data)
+        ? { items: data as InventoryStatus[], overallSummary: null, recommendedAction: null, productNames: null }
+        : (data as InventoryAnalysisResult);
+      setAnalysis(normalized);
+      toast.success(`${normalized.items?.length ?? 0} 件を AI が分析しました`);
     } catch {
       toast.error('通信エラーが発生しました');
     } finally {
       setLoading(false);
     }
   };
+
+  const results = analysis?.items ?? null;
+
+  // 商品 ID → 名称ルックアップ：選択商品 + バックエンドが解決した productNames を統合
+  const nameLookup = new Map<string, string>(picked.map((p) => [p.id, p.name]));
+  if (analysis?.productNames) {
+    for (const [id, name] of Object.entries(analysis.productNames)) {
+      if (name) nameLookup.set(id, name);
+    }
+  }
+  // items 自身の productName も補完
+  if (results) {
+    for (const it of results) {
+      if (it.productName && !nameLookup.has(it.productId)) {
+        nameLookup.set(it.productId, it.productName);
+      }
+    }
+  }
+  const displayName = (id: string) => nameLookup.get(id) ?? `${id.slice(0, 8)}…(名称不明)`;
 
   return (
     <div className="space-y-6 p-6">
@@ -104,7 +132,7 @@ export default function AdminInventoryAgentPage() {
         <div>
           <h1 className="text-2xl font-bold">在庫監視エージェント</h1>
           <p className="text-sm text-muted-foreground">
-            商品名で検索した商品の在庫状況を AI で確認し、代替品提案や再入荷見込みを取得します。
+            AI エージェントが在庫状況を分析し、アラート分類・代替商品提案・推奨アクションを生成します。
           </p>
         </div>
       </div>
@@ -113,7 +141,7 @@ export default function AdminInventoryAgentPage() {
         <CardHeader>
           <CardTitle>商品在庫を確認</CardTitle>
           <CardDescription>
-            商品名で検索して候補から選択してください。複数商品を一括確認できます。
+            商品名で検索して候補から選択してください。複数商品を一括で AI 分析できます。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -142,12 +170,41 @@ export default function AdminInventoryAgentPage() {
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <Search className="h-4 w-4" />
+              <Sparkles className="h-4 w-4" />
             )}
-            {loading ? '確認中…' : '在庫を確認'}
+            {loading ? 'AI 分析中…' : 'AI で在庫を分析'}
           </Button>
         </CardContent>
       </Card>
+
+      {analysis && (analysis.overallSummary || analysis.recommendedAction) && (
+        <Card className="border-primary/40 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="h-5 w-5 text-primary" />
+              AI エージェントの分析サマリ
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {analysis.overallSummary && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-1">全体傾向</p>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {analysis.overallSummary}
+                </p>
+              </div>
+            )}
+            {analysis.recommendedAction && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-1">推奨アクション</p>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                  {analysis.recommendedAction}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {results !== null && (
         <Card>
@@ -174,14 +231,11 @@ export default function AdminInventoryAgentPage() {
                 <TableBody>
                   {results.map((row) => {
                     const statusCfg = STATUS_BADGE[row.availabilityStatus];
-                    const displayName =
-                      row.productName && row.productName.length > 0
-                        ? row.productName
-                        : idToName.get(row.productId) ?? '(名称不明)';
+                    const name = displayName(row.productId);
                     return (
                       <TableRow key={row.productId}>
                         <TableCell className="text-sm">
-                          <div className="font-medium">{displayName}</div>
+                          <div className="font-medium">{name}</div>
                           <div className="text-xs text-muted-foreground font-mono">
                             {row.productId}
                           </div>
@@ -196,10 +250,21 @@ export default function AdminInventoryAgentPage() {
                         <TableCell className="text-sm">
                           {row.estimatedRestockDate ?? '—'}
                         </TableCell>
-                        <TableCell className="text-xs font-mono">
-                          {row.alternativeProductIds && row.alternativeProductIds.length > 0
-                            ? row.alternativeProductIds.join(', ')
-                            : '—'}
+                        <TableCell className="text-xs">
+                          {row.alternativeProductIds && row.alternativeProductIds.length > 0 ? (
+                            <ul className="space-y-1">
+                              {row.alternativeProductIds.map((altId) => (
+                                <li key={altId}>
+                                  <span className="font-medium">{displayName(altId)}</span>
+                                  <span className="ml-1 text-[10px] text-muted-foreground font-mono">
+                                    ({altId.slice(0, 8)}…)
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            '—'
+                          )}
                         </TableCell>
                         <TableCell>
                           {row.alert ? (

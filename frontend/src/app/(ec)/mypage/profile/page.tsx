@@ -107,7 +107,7 @@ function ProfileTab() {
           reset({
             firstName: data.firstName ?? '',
             lastName: data.lastName ?? '',
-            phone: data.phone ?? '',
+            phone: data.phoneNumber ?? '',
             address: data.address ?? '',
           });
         }
@@ -127,7 +127,12 @@ function ProfileTab() {
         const res = await fetch('/api/users/me', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
+          body: JSON.stringify({
+            firstName: data.firstName,
+            lastName: data.lastName,
+            phoneNumber: data.phone || undefined,
+            address: data.address || undefined,
+          }),
         });
         if (res.ok) {
           toast.success('プロフィールを更新しました');

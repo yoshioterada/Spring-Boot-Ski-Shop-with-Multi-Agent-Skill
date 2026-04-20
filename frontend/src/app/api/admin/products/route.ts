@@ -95,8 +95,22 @@ export async function GET(request: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { searchParams } = new URL(request.url);
+
+    // keyword 指定時は backend の /products/search?q=... に振り分ける。
+    // /products エンドポイントは keyword を解釈せず先頭 N 件を返してしまうため。
+    const keyword = searchParams.get('keyword')?.trim() ?? '';
+    let upstreamPath: string;
+    if (keyword.length > 0) {
+      const upstream = new URLSearchParams(searchParams);
+      upstream.delete('keyword');
+      upstream.set('q', keyword);
+      upstreamPath = `/api/v1/products/search?${upstream.toString()}`;
+    } else {
+      upstreamPath = `/api/v1/products?${searchParams.toString()}`;
+    }
+
     const [productsRes, catMap] = await Promise.all([
-      safeFetch(`${API_GATEWAY_URL}/api/v1/products?${searchParams.toString()}`, {
+      safeFetch(`${API_GATEWAY_URL}${upstreamPath}`, {
         headers: { Authorization: `Bearer ${session.accessToken}` },
       }),
       loadCategoryMap(session.accessToken as string),

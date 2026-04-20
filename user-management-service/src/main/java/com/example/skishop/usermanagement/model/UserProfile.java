@@ -10,7 +10,6 @@ import java.util.UUID;
 public class UserProfile {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @Column(nullable = false, unique = true, length = 255)
@@ -27,6 +26,9 @@ public class UserProfile {
 
     @Column(name = "phone_number", length = 20)
     private String phoneNumber;
+
+    @Column(name = "address", length = 500)
+    private String address;
 
     @Column(name = "birth_date")
     private LocalDate birthDate;
@@ -58,6 +60,7 @@ public class UserProfile {
     protected UserProfile() {}
 
     public UserProfile(String email, String passwordHash, String firstName, String lastName) {
+        this.id = UUID.randomUUID();
         this.email = email;
         this.passwordHash = passwordHash;
         this.firstName = firstName;
@@ -81,6 +84,7 @@ public class UserProfile {
     public String getFirstName() { return firstName; }
     public String getLastName() { return lastName; }
     public String getPhoneNumber() { return phoneNumber; }
+    public String getAddress() { return address; }
     public LocalDate getBirthDate() { return birthDate; }
     public Gender getGender() { return gender; }
     public UserStatus getStatus() { return status; }
@@ -90,11 +94,13 @@ public class UserProfile {
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 
+    public void setId(UUID id) { this.id = id; }
     public void setEmail(String email) { this.email = email; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public void setFirstName(String firstName) { this.firstName = firstName; }
     public void setLastName(String lastName) { this.lastName = lastName; }
     public void setPhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }
+    public void setAddress(String address) { this.address = address; }
     public void setBirthDate(LocalDate birthDate) { this.birthDate = birthDate; }
     public void setGender(Gender gender) { this.gender = gender; }
     public void setStatus(UserStatus status) { this.status = status; }
@@ -103,7 +109,7 @@ public class UserProfile {
     public void setRole(RoleEntity role) { this.role = role; }
 
     public enum UserStatus {
-        PENDING_VERIFICATION, ACTIVE, SUSPENDED, DEACTIVATED
+        PENDING_VERIFICATION, ACTIVE, INACTIVE, SUSPENDED, DEACTIVATED
     }
 
     public enum Gender {

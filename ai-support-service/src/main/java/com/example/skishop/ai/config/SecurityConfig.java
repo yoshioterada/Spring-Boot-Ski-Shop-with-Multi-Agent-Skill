@@ -1,8 +1,8 @@
 package com.example.skishop.ai.config;
 
 import com.example.skishop.common.security.InternalApiKeyAuthenticationFilter;
-import com.example.skishop.common.security.InternalApiKeyAuthenticationFilter;
 import com.example.skishop.common.security.JwtAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -38,6 +38,8 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // SseEmitter の非同期ディスパッチを許可（初回リクエストで認証済み）
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
                         .requestMatchers("/api/v1/recommendations/**").permitAll()
@@ -45,6 +47,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/chat/**").authenticated()
                         .requestMatchers("/api/v1/analytics/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/api/v1/models/**").hasRole("ADMIN")
+                        // AI Analyzer (F1-F5) — admin only
+                        .requestMatchers("/api/v1/admin/ai-analyzer/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(internalFilter, UsernamePasswordAuthenticationFilter.class)

@@ -2915,7 +2915,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SERVER_PORT: 8082
-      SPRING_DATA_MONGODB_URI: mongodb://skieshop:skieshop@mongodb:27017/inventory
+      SPRING_DATA_MONGODB_URI: mongodb://<MONGO_USER>:<MONGO_PASSWORD>@mongodb:27017/inventory
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       # 他の環境変数...
 

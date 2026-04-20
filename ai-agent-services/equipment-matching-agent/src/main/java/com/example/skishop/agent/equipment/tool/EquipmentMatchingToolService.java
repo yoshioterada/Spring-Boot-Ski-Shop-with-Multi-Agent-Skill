@@ -183,12 +183,36 @@ public class EquipmentMatchingToolService {
         return 0;
     }
 
+    /** スキルレベルの順序関係（隣接判定用）。 */
+    private static final List<String> SKILL_ORDER = List.of("BEGINNER", "INTERMEDIATE", "ADVANCED", "EXPERT");
+
+    /**
+     * skillLevel と商品 skillLevelSuitability の適合度スコア（0〜30）。
+     * 完全一致 +30 / 隣接レベル +18 / 2 段階差 +5 / 商品が ALL +12。
+     */
+    public static int skillAffinityScore(String requestedSkill, String productSkill) {
+        if (productSkill == null) return 0;
+        if ("ALL".equals(productSkill)) return 12;
+        if (requestedSkill == null) return 8;
+        if (requestedSkill.equals(productSkill)) return 30;
+        int reqIdx = SKILL_ORDER.indexOf(requestedSkill.toUpperCase(java.util.Locale.ROOT));
+        int prodIdx = SKILL_ORDER.indexOf(productSkill.toUpperCase(java.util.Locale.ROOT));
+        if (reqIdx < 0 || prodIdx < 0) return 0;
+        int diff = Math.abs(reqIdx - prodIdx);
+        if (diff == 1) return 18;
+        if (diff == 2) return 5;
+        return 0;
+    }
+
     static RankedProduct scoreProduct(ProductCandidate product, String skillLevel) {
         double score = 50.0;
-        if (skillLevel != null && skillLevel.equals(product.skillLevelSuitability())) score += 30.0;
-        if ("ALL".equals(product.skillLevelSuitability())) score += 15.0;
+        score += skillAffinityScore(skillLevel, product.skillLevelSuitability());
         if (product.isAvailable()) score += 10.0;
-        String reason = "スキルレベル「%s」に適しており、在庫があります。".formatted(skillLevel);
+        // 在庫量が多いほど僅かに加点（同点回避用、最大 +5）
+        score += Math.min(5, product.stockQuantity()) * 1.0;
+        String suit = product.skillLevelSuitability() == null ? "ALL" : product.skillLevelSuitability();
+        String reason = "スキルレベル要求「%s」に対し商品適性は「%s」。在庫: %d 個。"
+                .formatted(skillLevel, suit, product.stockQuantity());
         return new RankedProduct(0, product, score, reason, product.basePrice(), false);
     }
 }

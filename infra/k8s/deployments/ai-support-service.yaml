@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-support-service
+  namespace: skishop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-support-service
+  template:
+    metadata:
+      labels:
+        app: ai-support-service
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: skishop-sa
+      volumes:
+      - name: secrets-store
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: skishop-secrets
+      containers:
+      - name: ai-support-service
+        image: <ACR_LOGIN_SERVER>/ai-support-service:latest
+        ports:
+        - containerPort: 8087
+        volumeMounts:
+        - name: secrets-store
+          mountPath: /mnt/secrets-store
+          readOnly: true
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: COSMOS_CS
+        - name: DB_URL
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: SALES_DB_URL
+        - name: DB_USERNAME
+          value: "<DB_ADMIN_USER>"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: DB_ADMIN_PASS
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: JWT_SECRET
+        - name: INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: INTERNAL_API_KEY
+        - name: AZURE_OPENAI_API_KEY
+          value: "9ckb6mNQJJ7En47GfmWZNbHo08N8osdtTjA6d5thx2bYuIVCvRnrJQQJ99CCACi0881XJ3w3AAABACOG2V8F"
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: AZURE_OPENAI_ENDPOINT
+        - name: AZURE_OPENAI_DEPLOYMENT
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: AZURE_OPENAI_DEPLOYMENT
+        - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: KAFKA_BOOTSTRAP_SERVERS
+        - name: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL
+        - name: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM
+        - name: EVENTHUB_CS
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: EVENTHUB_CS
+        - name: SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG
+          value: "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"$ConnectionString\" password=\"$(EVENTHUB_CS)\";"
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: SPRING_PROFILES_ACTIVE
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        readinessProbe:
+          tcpSocket:
+            port: 8087
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 6
+        livenessProbe:
+          tcpSocket:
+            port: 8087
+          initialDelaySeconds: 180
+          periodSeconds: 20
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-support-service
+  namespace: skishop
+spec:
+  selector:
+    app: ai-support-service
+  ports:
+  - port: 8087
+    targetPort: 8087
+  type: ClusterIP

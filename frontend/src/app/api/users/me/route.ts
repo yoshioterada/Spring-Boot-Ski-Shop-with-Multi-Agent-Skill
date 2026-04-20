@@ -3,18 +3,20 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:8081';
+const GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://localhost:8090';
+const USER_SERVICE_URL = process.env.USER_SERVICE_URL || GATEWAY_URL;
 
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session.accessToken) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const res = await fetch(`${USER_SERVICE_URL}/api/v1/users/${session.user.id}`, {
       headers: {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.accessToken}`,
         'X-Request-Id': crypto.randomUUID(),
       },
     });
@@ -29,7 +31,7 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session.accessToken) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -38,6 +40,7 @@ export async function PUT(request: NextRequest) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.accessToken}`,
         'X-Request-Id': crypto.randomUUID(),
       },
       body: JSON.stringify(body),
@@ -53,13 +56,14 @@ export async function PUT(request: NextRequest) {
 export async function DELETE() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session.accessToken) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const res = await fetch(`${USER_SERVICE_URL}/api/v1/users/${session.user.id}`, {
       method: 'DELETE',
       headers: {
+        Authorization: `Bearer ${session.accessToken}`,
         'X-Request-Id': crypto.randomUUID(),
       },
     });

@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
-const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || 'http://localhost:8082';
+const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://localhost:8090';
+const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL || API_GATEWAY_URL;
 
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get('query') || '';

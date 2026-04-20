@@ -1,0 +1,276 @@
+## 機密情報チェック完了リスト
+## text_files.txt 記載ファイルを上から順番にチェックし、機密情報の有無を確認した結果です。
+## 置換ルール:
+##   rg-yoshioterada-ski / rg-yoshio-test  → <RESOURCE_GROUP_NAME>
+##   skishopcr.azurecr.io                  → <ACR_LOGIN_SERVER>
+##   skishopcr                             → <ACR_NAME>
+##   skishopadmin                          → <DB_ADMIN_USER>
+##   yoshi-ski-auth-db.postgres.database.azure.com → <AUTH_DB_HOST>
+##   yoshi-ski-*-db                        → <DB_NAME> / <AUTH_DB_NAME> / <USER_DB_NAME>
+##   yoshi-ski-mongo                       → <COSMOS_DB_NAME>
+##   yoshi-ski-eventhub                    → <EVENTHUB_NAMESPACE>
+##   ee72069a-4726-4e1a-afe6-7f14e9b9d362  → <AZURE_SUBSCRIPTION_ID>
+##
+## ステータス: OK=機密情報なし, FIXED=機密情報を置換済み
+
+## --- design-docs (lines 1-23) ---
+OK  ./design-docs/ai-support-service-design.md        (サンプルUUID のみ、実クレデンシャルなし)
+OK  ./design-docs/additional1-event-pubsub-impl-plan.md
+OK  ./design-docs/structure.md
+OK  ./design-docs/inventory-management-design.md      (サンプルUUID のみ)
+OK  ./design-docs/additional0-first-modify-plan.md
+OK  ./design-docs/payment-cart-service-design.md      (サンプルUUID のみ)
+OK  ./design-docs/authentication-service-design.md    (localhost URL のみ)
+OK  ./design-docs/coupon-service-design.md            (サンプルUUID のみ)
+OK  ./design-docs/additional2-gateway-spof-svc-discovery-impl-plan.md
+OK  ./design-docs/point-service-design.md             (サンプルUUID のみ)
+OK  ./design-docs/TODO-front-end-non-impl.md
+OK  ./design-docs/add-info-2-customer-spec.md
+OK  ./design-docs/AI-analyzer-spec.md
+OK  ./design-docs/api-gateway-design.md
+OK  ./design-docs/front-end-need.md
+OK  ./design-docs/mailsend-service-design.md
+OK  ./design-docs/AI-analyzer-spec-impl-plan.md
+OK  ./design-docs/sales-management-design.md          (サンプルUUID のみ)
+OK  ./design-docs/user-management-design.md           (サンプルUUID のみ)
+OK  ./design-docs/spec.md                             (サンプルUUID のみ)
+OK  ./design-docs/strategy.md
+OK  ./design-docs/strategy-en.md
+OK  ./design-docs/propagateEvent-from-authservice-2-usermanageservice.md
+
+## --- ai-agent-services/design-docs (lines 24-33) ---
+OK  ./ai-agent-services/design-docs/apply-existing-services.md
+OK  ./ai-agent-services/design-docs/weather-agent-design.md
+OK  ./ai-agent-services/design-docs/equipment-matching-agent-design.md
+OK  ./ai-agent-services/design-docs/dynamic-pricing-agent-design.md
+OK  ./ai-agent-services/design-docs/orchestrator-agent-design.md
+OK  ./ai-agent-services/design-docs/customer-intent-agent-design.md
+OK  ./ai-agent-services/design-docs/hybrid-deployment-design.md
+OK  ./ai-agent-services/design-docs/agent-impl-plan.md
+OK  ./ai-agent-services/design-docs/coupon-optimization-agent-design.md
+OK  ./ai-agent-services/design-docs/inventory-monitoring-agent-design.md
+
+## --- frontend README類 (lines 34-36) ---
+OK  ./frontend/README.md
+OK  ./frontend/AGENTS.md
+OK  ./frontend/CLAUDE.md
+
+## --- aks-deploy-plan.md (line 37) ---
+FIXED  ./aks-deploy-plan.md
+##  置換箇所:
+##   rg-yoshioterada-ski → <RESOURCE_GROUP_NAME> (7箇所)
+##   skishopcr.azurecr.io → <ACR_LOGIN_SERVER> (複数箇所)
+##   skishopcr → <ACR_NAME> (複数箇所)
+##   skishopadmin → <DB_ADMIN_USER> (1箇所)
+##   yoshi-ski-auth-db.postgres.database.azure.com → <AUTH_DB_HOST> (1箇所)
+##   yoshi-ski-auth-db → <AUTH_DB_NAME>
+##   yoshi-ski-user-db → <USER_DB_NAME>
+##   yoshi-ski-mongo → <COSMOS_DB_NAME>
+##   yoshi-ski-eventhub → <EVENTHUB_NAMESPACE>
+##   yoshi-ski-*-db → <DB_NAME>
+##   PG_PREFIX="yoshi-ski" → PG_PREFIX="<DB_PREFIX>"
+
+## --- CHANGELOG.md (line 38) ---
+OK  ./CHANGELOG.md
+
+## --- docs/ (lines 39-41) ---
+OK  ./docs/rollback-plan.md
+OK  ./docs/compliance-requirements-checklist.md
+OK  ./docs/runbook.md
+
+## --- README.md (line 42) ---
+FIXED  ./README.md
+##  置換箇所: rg-yoshio-test → <RESOURCE_GROUP_NAME> (1箇所)
+
+## --- azure-deploy-plan.md (line 43) ---
+FIXED  ./azure-deploy-plan.md
+##  置換箇所:
+##   rg-yoshio-test → <RESOURCE_GROUP_NAME> (複数箇所)
+##   skishopcr.azurecr.io → <ACR_LOGIN_SERVER> (複数箇所)
+##   skishopcr → <ACR_NAME> (複数箇所)
+##   skishopadmin → <DB_ADMIN_USER> (2箇所)
+##   ee72069a-4726-4e1a-afe6-7f14e9b9d362 → <AZURE_SUBSCRIPTION_ID> (1箇所)
+
+## --- scripts/resort-info-scraper/README.md ---
+OK  ./scripts/resort-info-scraper/README.md  (環境変数名のみ記載, 実値なし)
+
+## --- .github/instructions/ (全9ファイル) ---
+OK  ./.github/instructions/test-standards.instructions.md
+OK  ./.github/instructions/dockerfile-infra.instructions.md
+OK  ./.github/instructions/java-coding-standards.instructions.md
+OK  ./.github/instructions/spring-config.instructions.md
+OK  ./.github/instructions/pom-dependency.instructions.md
+OK  ./.github/instructions/sql-schema-review.instructions.md
+OK  ./.github/instructions/api-design.instructions.md
+OK  ./.github/instructions/copilot-cli-ref.instructions.md
+OK  ./.github/instructions/security-coding.instructions.md
+
+## --- .github/review-reports/ (4ファイル) ---
+OK  ./.github/review-reports/gate-1-5/2026-03-19_reexam-1.md
+OK  ./.github/review-reports/gate-1-5/2026-03-19_full-review.md
+OK  ./.github/review-reports/gate-1-5/2026-03-19_reexam-2.md
+OK  ./.github/review-reports/gate-1-4/2025-07-14_gate-1-4-full-review.md
+OK  ./.github/review-reports/gate-3/2026-03-19_reexam-2_tech-lead.md
+OK  ./.github/appmod/assessment/engines/ai/security-assessment-plan.md
+
+## --- .github/agents/ (14ファイル) ---
+OK  ./.github/agents/performance-reviewer.agent.md
+OK  ./.github/agents/architect.agent.md
+OK  ./.github/agents/release-manager.agent.md
+OK  ./.github/agents/tech-lead.agent.md
+OK  ./.github/agents/infra-ops-reviewer.agent.md
+OK  ./.github/agents/oss-reviewer.agent.md
+OK  ./.github/agents/compliance-reviewer.agent.md
+OK  ./.github/agents/security-reviewer.agent.md
+OK  ./.github/agents/qa-manager.agent.md
+OK  ./.github/agents/orchestrator.agent.md
+OK  ./.github/agents/audit-reviewer.agent.md
+OK  ./.github/agents/dba-reviewer.agent.md
+OK  ./.github/agents/ux-accessibility-reviewer.agent.md
+OK  ./.github/agents/business-analyst.agent.md
+
+## --- .github/copilot-instructions.md ---
+OK  ./.github/copilot-instructions.md
+
+## --- .github/prompts/ (6ファイル) ---
+OK  ./.github/prompts/generate-api-spec.prompt.md
+OK  ./.github/prompts/generate-release-notes.prompt.md
+OK  ./.github/prompts/generate-runbook.prompt.md
+OK  ./.github/prompts/generate-threat-model.prompt.md
+OK  ./.github/prompts/generate-pia.prompt.md
+OK  ./.github/prompts/generate-test-plan.prompt.md
+
+## --- .github/skills/ (全SKILL.md・references) ---
+OK  ./.github/skills/compliance-check/references/gdpr-checklist.md
+OK  ./.github/skills/compliance-check/references/license-policy.md
+OK  ./.github/skills/compliance-check/SKILL.md
+OK  ./.github/skills/phase-finished-verification/references/quality-check-patterns.md
+OK  ./.github/skills/phase-finished-verification/references/requirements-traceability.md
+OK  ./.github/skills/phase-finished-verification/references/phase-verification-guide.md
+OK  ./.github/skills/phase-finished-verification/SKILL.md
+OK  ./.github/skills/security-audit/references/secure-coding-guide.md
+OK  ./.github/skills/security-audit/references/owasp-top10.md
+OK  ./.github/skills/security-audit/SKILL.md
+OK  ./.github/skills/release-readiness/references/go-nogo-criteria.md
+OK  ./.github/skills/release-readiness/SKILL.md
+OK  ./.github/skills/stage-gate-review/references/gate-criteria.md
+OK  ./.github/skills/stage-gate-review/references/checklist-templates.md
+OK  ./.github/skills/stage-gate-review/SKILL.md
+OK  ./.github/skills/full-review-pipeline/references/pipeline-flow.md
+OK  ./.github/skills/full-review-pipeline/SKILL.md
+
+## --- TMP/ (7ファイル) ---
+OK  ./TMP/definition.md
+OK  ./TMP/front-end-issue-by-techlead.md
+OK  ./TMP/app-dev-process.md
+OK  ./TMP/operations-evidence.md
+OK  ./TMP/plan.md
+OK  ./TMP/front-end-require-issue.md
+OK  ./TMP/front-end-impl-plan.md
+
+## --- load-tests/README.md ---
+OK  ./load-tests/README.md
+
+## --- ai-agent-services application.yml (4ファイル) ---
+OK  ./ai-agent-services/agent-runtime-monolith/target/test-classes/application.yml
+OK  ./ai-agent-services/agent-runtime-monolith/target/classes/application.yml
+OK  ./ai-agent-services/agent-runtime-monolith/src/test/resources/application.yml
+OK  ./ai-agent-services/agent-runtime-monolith/src/main/resources/application.yml
+
+## --- .github/workflows/ (5ファイル) ---
+OK  ./.github/workflows/load-test.yml     (secrets.* / vars.* 参照のみ)
+OK  ./.github/workflows/lighthouse.yml
+OK  ./.github/workflows/deploy.yml        (secrets.* / vars.* 参照のみ)
+OK  ./.github/workflows/infra.yml         (secrets.* / vars.* 参照のみ)
+OK  ./.github/workflows/ci.yml
+
+## --- docker-compose.yml ---
+OK  ./docker-compose.yml  (${VARIABLE} 環境変数参照のみ, 実値なし)
+
+## --- monitoring/ (5ファイル) ---
+OK  ./monitoring/grafana/provisioning/datasources/datasources.yml
+OK  ./monitoring/grafana/provisioning/dashboards/dashboards.yml
+OK  ./monitoring/prometheus/alerts-multi-agent.yml
+OK  ./monitoring/prometheus/rules/ai-analyzer-alerts.yml
+OK  ./monitoring/prometheus/prometheus.yml
+
+## --- pom.xml (13ファイル) ---
+OK  ./inventory-management-service/pom.xml
+OK  ./authentication-service/pom.xml
+OK  ./ai-agent-services/dynamic-pricing-agent/pom.xml
+OK  ./ai-agent-services/agent-runtime-monolith/pom.xml
+OK  ./ai-agent-services/agent-common/pom.xml
+OK  ./ai-agent-services/coupon-optimization-agent/pom.xml
+OK  ./ai-agent-services/pom.xml
+OK  ./ai-agent-services/customer-intent-agent/pom.xml
+OK  ./ai-agent-services/orchestrator-agent/pom.xml
+OK  ./ai-agent-services/weather-agent/pom.xml
+OK  ./ai-agent-services/inventory-monitoring-agent/pom.xml
+OK  ./ai-agent-services/equipment-matching-agent/pom.xml
+OK  ./mailsend-service/pom.xml
+OK  ./pom.xml
+OK  ./api-gateway-service/pom.xml
+OK  ./payment-cart-service/pom.xml
+OK  ./ai-support-service/pom.xml
+OK  ./coupon-service/pom.xml
+OK  ./user-management-service/pom.xml
+OK  ./point-service/pom.xml
+OK  ./sales-management-service/pom.xml
+OK  ./common-lib/pom.xml
+
+## --- Dockerfile (12ファイル) ---
+OK  ./inventory-management-service/Dockerfile
+OK  ./authentication-service/Dockerfile
+OK  ./ai-agent-services/agent-runtime-monolith/Dockerfile
+OK  ./frontend/Dockerfile
+OK  ./mailsend-service/Dockerfile
+OK  ./api-gateway-service/Dockerfile
+OK  ./payment-cart-service/Dockerfile
+OK  ./ai-support-service/Dockerfile
+OK  ./coupon-service/Dockerfile
+OK  ./user-management-service/Dockerfile
+OK  ./point-service/Dockerfile
+OK  ./sales-management-service/Dockerfile
+
+## --- infra/k8s/deployments/ (12ファイル) ---
+FIXED  ./infra/k8s/deployments/agent-runtime-monolith.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>
+FIXED  ./infra/k8s/deployments/ai-support-service.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>, skishopadmin → <DB_ADMIN_USER>
+FIXED  ./infra/k8s/deployments/api-gateway-service.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>
+FIXED  ./infra/k8s/deployments/authentication-service.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>, skishopadmin → <DB_ADMIN_USER>
+FIXED  ./infra/k8s/deployments/coupon-service.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>, skishopadmin → <DB_ADMIN_USER>
+FIXED  ./infra/k8s/deployments/frontend.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>, 74.176.35.245 → <EXTERNAL_IP>
+FIXED  ./infra/k8s/deployments/inventory-management-service.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>
+FIXED  ./infra/k8s/deployments/mailsend-service.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>, skishopadmin → <DB_ADMIN_USER>, 74.176.35.245 → <EXTERNAL_IP>
+FIXED  ./infra/k8s/deployments/payment-cart-service.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>, skishopadmin → <DB_ADMIN_USER>
+FIXED  ./infra/k8s/deployments/point-service.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>, skishopadmin → <DB_ADMIN_USER>
+FIXED  ./infra/k8s/deployments/sales-management-service.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>, skishopadmin → <DB_ADMIN_USER>
+FIXED  ./infra/k8s/deployments/user-management-service.yaml
+##  置換箇所: skishopcr.azurecr.io → <ACR_LOGIN_SERVER>, skishopadmin → <DB_ADMIN_USER>
+
+## --- scripts/ (4ファイル) ---
+OK  ./scripts/dev.sh
+OK  ./scripts/health-check.sh
+OK  ./.github/java-upgrade/hooks/scripts/recordToolUse.sh
+OK  ./.github/hooks/scripts/post-edit-check.sh
+OK  ./.github/hooks/scripts/inject-project-context.sh
+OK  ./.github/skills/security-audit/scripts/dependency-check.sh
+
+## --- frontend/.next/sitemap (node_modules除く) ---
+OK  ./frontend/.next/standalone/.next/server/app/sitemap.xml
+OK  ./frontend/.next/server/app/sitemap.xml
+
+## --- node_modules/ (2147ファイル) ---
+## サードパーティライブラリのREADME/CHANGELOGファイル。
+## プロジェクト固有のクレデンシャルは含まれないことを確認済み。
+OK  ./frontend/node_modules/**  (全2147ファイル - サードパーティライブラリドキュメント)

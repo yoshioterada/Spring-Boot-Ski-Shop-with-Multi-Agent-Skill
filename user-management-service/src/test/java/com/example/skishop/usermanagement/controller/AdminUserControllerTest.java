@@ -51,7 +51,7 @@ class AdminUserControllerTest {
     private UserResponse createUserResponse() {
         return new UserResponse(
                 userId, "test@example.com", "Taro", "Yamada",
-                "090-1234-5678", LocalDate.of(1990, 1, 1), "MALE",
+                "090-1234-5678", null, LocalDate.of(1990, 1, 1), "MALE",
                 "ACTIVE", true, false, "USER",
                 Instant.now(), Instant.now());
     }
@@ -105,7 +105,8 @@ class AdminUserControllerTest {
 
             // Act & Assert
             mockMvc.perform(put("/api/v1/admin/users/{id}/status", userId)
-                            .param("status", "SUSPENDED"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\":\"SUSPENDED\"}"))
                     .andExpect(status().isNoContent());
         }
 
@@ -115,7 +116,8 @@ class AdminUserControllerTest {
         void should_returnForbidden_when_notAdmin() throws Exception {
             // Act & Assert
             mockMvc.perform(put("/api/v1/admin/users/{id}/status", userId)
-                            .param("status", "SUSPENDED"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\":\"SUSPENDED\"}"))
                     .andExpect(status().isForbidden());
         }
     }

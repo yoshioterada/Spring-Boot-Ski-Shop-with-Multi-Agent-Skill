@@ -251,7 +251,7 @@ public class OpenMeteoClient {
 
         List<WeatherForecastData.DailyForecast> list = new ArrayList<>(dates.size());
         for (int i = 0; i < dates.size(); i++) {
-            int code = i < codes.size() ? codes.get(i).intValue() : 0;
+            int code = i < codes.size() && codes.get(i) != null ? codes.get(i).intValue() : 0;
             list.add(new WeatherForecastData.DailyForecast(
                     LocalDate.parse(dates.get(i)),
                     safe(tMax, i),
@@ -281,23 +281,23 @@ public class OpenMeteoClient {
 
         if (hourly != null) {
             List<Number> depthSeries = (List<Number>) hourly.getOrDefault("snow_depth", List.of());
-            if (!depthSeries.isEmpty()) {
+            if (!depthSeries.isEmpty() && depthSeries.get(depthSeries.size() - 1) != null) {
                 snowDepth = depthSeries.get(depthSeries.size() - 1).doubleValue() * 100.0; // m -> cm
             }
             List<Number> snowfallSeries = (List<Number>) hourly.getOrDefault("snowfall", List.of());
             int n = snowfallSeries.size();
-            for (int i = Math.max(0, n - 24); i < n; i++) freshSnow24 += snowfallSeries.get(i).doubleValue();
-            for (int i = Math.max(0, n - 72); i < n; i++) freshSnow72 += snowfallSeries.get(i).doubleValue();
+            for (int i = Math.max(0, n - 24); i < n; i++) { if (snowfallSeries.get(i) != null) freshSnow24 += snowfallSeries.get(i).doubleValue(); }
+            for (int i = Math.max(0, n - 72); i < n; i++) { if (snowfallSeries.get(i) != null) freshSnow72 += snowfallSeries.get(i).doubleValue(); }
 
             List<Number> visSeries = (List<Number>) hourly.getOrDefault("visibility", List.of());
-            if (!visSeries.isEmpty()) {
+            if (!visSeries.isEmpty() && visSeries.get(visSeries.size() - 1) != null) {
                 visibilityKm = visSeries.get(visSeries.size() - 1).doubleValue() / 1000.0;
             }
         }
 
         if (daily != null && snowDepth == 0.0) {
             List<Number> snowfallSum = (List<Number>) daily.getOrDefault("snowfall_sum", List.of());
-            for (Number n : snowfallSum) snowDepth += n.doubleValue();
+            for (Number n : snowfallSum) { if (n != null) snowDepth += n.doubleValue(); }
         }
 
         String snowQuality = classifySnowQuality(freshSnow24, freshSnow72);

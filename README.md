@@ -231,7 +231,7 @@ ACS は次の 3 階層で構成されます。順番に作成してください�
 ```bash
 # 変数定義
 SUB=<your-subscription-id>
-RG=rg-yoshio-test                    # 利用するリソースグループ名
+RG=<RESOURCE_GROUP_NAME>                    # 利用するリソースグループ名
 EMAIL_SVC=skishop-email-comm         # ① Email Service 名
 ACS_NAME=skishop-acs                 # ③ Communication Service 名
 DATA_LOC=japan                       # データ保管リージョン（japan / unitedstates / europe など）

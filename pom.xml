@@ -57,6 +57,9 @@
         <!-- Documentation -->
         <springdoc.version>2.8.5</springdoc.version>
 
+        <!-- Resilience -->
+        <resilience4j.version>2.3.0</resilience4j.version>
+
         <!-- Azure Communication Services (Mail Send Service) -->
         <azure.communication.email.version>1.1.2</azure.communication.email.version>
         <azure.identity.version>1.15.4</azure.identity.version>
@@ -67,6 +70,14 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-bom</artifactId>
+                <version>${resilience4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
             <dependency>
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>

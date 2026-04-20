@@ -10,6 +10,7 @@ public record UserResponse(
         String firstName,
         String lastName,
         String phoneNumber,
+        String address,
         LocalDate birthDate,
         String gender,
         String status,

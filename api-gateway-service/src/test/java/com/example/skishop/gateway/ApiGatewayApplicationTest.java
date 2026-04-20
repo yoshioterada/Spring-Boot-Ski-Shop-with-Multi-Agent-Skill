@@ -56,7 +56,8 @@ class ApiGatewayApplicationTest {
                 "ai-support-recommendations",
                 "ai-support-search",
                 "ai-support-analytics",
-                "ai-support-models"
+                "ai-support-models",
+                "ai-analyzer"
         );
     }
 

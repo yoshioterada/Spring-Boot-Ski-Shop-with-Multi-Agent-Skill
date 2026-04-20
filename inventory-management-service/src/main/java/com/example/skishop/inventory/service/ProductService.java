@@ -106,6 +106,10 @@ public class ProductService {
         return productRepository.findByStatus(Product.ProductStatus.ACTIVE, pageable).map(this::toResponse);
     }
 
+    public List<ProductResponse> getAllProducts() {
+        return productRepository.findAll().stream().map(this::toResponse).toList();
+    }
+
     public Page<ProductResponse> searchProducts(String query, Pageable pageable) {
         return productRepository.findByNameContainingIgnoreCaseOrBrandContainingIgnoreCase(query, query, pageable)
                 .map(this::toResponse);
@@ -191,6 +195,16 @@ public class ProductService {
 
     public List<ProductResponse> getProductsByIds(List<String> productIds) {
         return productRepository.findAllById(productIds).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    /** SKU リストから商品を一括取得 (sales-management 集計用)。 */
+    public List<ProductResponse> getProductsBySkus(List<String> skus) {
+        if (skus == null || skus.isEmpty()) {
+            return List.of();
+        }
+        return productRepository.findBySkuIn(skus).stream()
                 .map(this::toResponse)
                 .toList();
     }

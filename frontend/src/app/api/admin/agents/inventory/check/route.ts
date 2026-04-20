@@ -7,9 +7,10 @@ const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://localhost:8090';
 const AGENT_TIMEOUT_MS = 120_000;
 
 /**
- * 管理者用：在庫監視エージェント `check` を呼び出す BFF。
+ * 管理者用：在庫監視 AI エージェントの分析エンドポイントを呼び出す BFF。
  * フロントから受け取った productIds[] と requiredQuantity を、
- * api-gateway 経由で `/api/v1/admin/agents/inventory/check` にプロキシする。
+ * api-gateway 経由で `/api/v1/admin/agents/inventory/analyze` にプロキシする。
+ * (LLM がアラート分類・代替提案・全体サマリ・推奨アクションを生成)
  */
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -33,8 +34,8 @@ export async function POST(request: NextRequest) {
       productIds: body.productIds,
       requiredQuantity: typeof body.requiredQuantity === 'number' ? body.requiredQuantity : 1,
     };
-    console.info('[admin/agents/inventory/check] request', payload);
-    const res = await fetch(`${API_GATEWAY_URL}/api/v1/admin/agents/inventory/check`, {
+    console.info('[admin/agents/inventory/analyze] request', payload);
+    const res = await fetch(`${API_GATEWAY_URL}/api/v1/admin/agents/inventory/analyze`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.accessToken}`,
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     });
     const text = await res.text();
     console.info(
-      '[admin/agents/inventory/check] response',
+      '[admin/agents/inventory/analyze] response',
       res.status,
       text.slice(0, 500),
     );

@@ -126,6 +126,7 @@ public class UserService {
         if (request.firstName() != null) user.setFirstName(request.firstName());
         if (request.lastName() != null) user.setLastName(request.lastName());
         if (request.phoneNumber() != null) user.setPhoneNumber(request.phoneNumber());
+        if (request.address() != null) user.setAddress(request.address());
         if (request.birthDate() != null) user.setBirthDate(request.birthDate());
         if (request.gender() != null) user.setGender(Gender.valueOf(request.gender().toUpperCase()));
 
@@ -160,8 +161,12 @@ public class UserService {
         user.setStatus(UserProfile.UserStatus.valueOf(status.toUpperCase()));
         userProfileRepository.save(user);
 
-        eventPublisher.publish(DomainEvent.create("user.updated", "user-management-service",
-                new UserEventPayload(user.getId(), user.getEmail(), user.getFirstName(), user.getLastName())));
+        try {
+            eventPublisher.publish(DomainEvent.create("user.updated", "user-management-service",
+                    new UserEventPayload(user.getId(), user.getEmail(), user.getFirstName(), user.getLastName())));
+        } catch (Exception e) {
+            log.warn("Failed to publish user.updated event for user {}: {}", userId, e.getMessage());
+        }
     }
 
     @Transactional
@@ -309,7 +314,7 @@ public class UserService {
     private UserResponse toResponse(UserProfile user) {
         return new UserResponse(
                 user.getId(), user.getEmail(), user.getFirstName(), user.getLastName(),
-                user.getPhoneNumber(), user.getBirthDate(),
+                user.getPhoneNumber(), user.getAddress(), user.getBirthDate(),
                 user.getGender() != null ? user.getGender().name() : null,
                 user.getStatus().name(), user.isEmailVerified(), user.isPhoneVerified(),
                 user.getRole() != null ? user.getRole().getName() : null,

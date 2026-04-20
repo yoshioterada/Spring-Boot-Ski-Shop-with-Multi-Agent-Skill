@@ -37,7 +37,8 @@ class EquipmentMatchingToolServiceTest {
 
     @Test
     void searchInventoryCandidates_delegates_to_client() {
-        when(inventoryClient.searchBySkillAndCategory("スキー板", "BEGINNER", 50000))
+        // 入力 "スキー板" は normalizeCategory で "cat-ski" に変換され、その値で client が呼ばれる
+        when(inventoryClient.searchBySkillAndCategory("cat-ski", "BEGINNER", 50000))
                 .thenReturn(List.of(ski("p1", "150cm", "BEGINNER", "ALL_CONDITIONS", 30000, true)));
         var result = tool.searchInventoryCandidates("スキー板", "BEGINNER", 50000);
         assertThat(result).hasSize(1);

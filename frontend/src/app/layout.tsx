@@ -1,6 +1,8 @@
 import { Inter, Noto_Sans_JP } from 'next/font/google';
+import { getServerSession } from 'next-auth';
 
 import './globals.css';
+import { authOptions } from '@/lib/auth-options';
 import { Providers } from './providers';
 
 import type { Metadata } from 'next';
@@ -34,11 +36,19 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  let session = null;
+  try {
+    session = await getServerSession(authOptions);
+  } catch {
+    // getServerSession handles JWT errors internally; treat as unauthenticated
+    session = null;
+  }
+
   return (
     <html
       lang="ja"
@@ -46,7 +56,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col font-sans">
-        <Providers>{children}</Providers>
+        <Providers session={session}>{children}</Providers>
       </body>
     </html>
   );

@@ -48,6 +48,14 @@ public class InternalApiKeyAuthenticationFilter extends OncePerRequestFilter {
         this.expectedApiKey = expectedApiKey;
     }
 
+    /**
+     * SseEmitter の非同期ディスパッチ時にも API キーフィルタを再実行する。
+     */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {

@@ -468,7 +468,7 @@ spring:
 # Azure Communication Services
 azure:
   communication:
-    endpoint: ${AZURE_COMMUNICATION_ENDPOINT:https://skishop-acs.communication.azure.com}
+    endpoint: ${AZURE_COMMUNICATION_ENDPOINT:https://<ACS_ENDPOINT_HOST>.communication.azure.com}
     sender-address: ${MAIL_SENDER_ADDRESS:DoNotReply@skishop-acs.azurecomm.net}
 
 # Mail Service Config

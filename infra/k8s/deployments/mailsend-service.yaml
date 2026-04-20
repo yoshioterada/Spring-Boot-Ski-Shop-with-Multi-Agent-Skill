@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailsend-service
+  namespace: skishop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mailsend-service
+  template:
+    metadata:
+      labels:
+        app: mailsend-service
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: skishop-sa
+      volumes:
+      - name: secrets-store
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: skishop-secrets
+      containers:
+      - name: mailsend-service
+        image: <ACR_LOGIN_SERVER>/mailsend-service:latest
+        ports:
+        - containerPort: 8089
+        volumeMounts:
+        - name: secrets-store
+          mountPath: /mnt/secrets-store
+          readOnly: true
+        env:
+        - name: DB_URL
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: MAIL_DB_URL
+        - name: DB_USERNAME
+          value: "<DB_ADMIN_USER>"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: DB_ADMIN_PASS
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: JWT_SECRET
+        - name: INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: INTERNAL_API_KEY
+        - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: KAFKA_BOOTSTRAP_SERVERS
+        - name: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL
+        - name: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM
+        - name: EVENTHUB_CS
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: EVENTHUB_CS
+        - name: SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG
+          value: "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"$ConnectionString\" password=\"$(EVENTHUB_CS)\";"
+        - name: SPRING_CLOUD_STREAM_KAFKA_BINDER_CONFIGURATION_SASL_JAAS_CONFIG
+          value: "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"$ConnectionString\" password=\"$(EVENTHUB_CS)\";"
+        - name: SPRING_CLOUD_STREAM_KAFKA_BINDER_CONFIGURATION_SECURITY_PROTOCOL
+          value: "SASL_SSL"
+        - name: SPRING_CLOUD_STREAM_KAFKA_BINDER_CONFIGURATION_SASL_MECHANISM
+          value: "PLAIN"
+        - name: SPRING_CLOUD_STREAM_KAFKA_BINDER_AUTO_CREATE_TOPICS
+          value: "false"
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: skishop-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: AZURE_COMMUNICATION_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: ACS_CONNECTION_STRING
+        - name: MAIL_SENDER_ADDRESS
+          valueFrom:
+            secretKeyRef:
+              name: skishop-secrets
+              key: MAIL_SENDER_ADDRESS
+        - name: APP_BASE_URL
+          value: "http://<EXTERNAL_IP>"
+        - name: SPRING_CLOUD_STREAM_BINDINGS_MAILEVENTSUMER_IN_0_DESTINATION
+          value: "user-events"
+        - name: SPRING_CLOUD_STREAM_BINDINGS_DOMAINEVENTS_OUT_0_DESTINATION
+          value: "mail-events"
+        resources:
+          requests:
+            memory: "384Mi"
+            cpu: "100m"
+          limits:
+            memory: "768Mi"
+            cpu: "500m"
+        readinessProbe:
+          tcpSocket:
+            port: 8089
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 6
+        livenessProbe:
+          tcpSocket:
+            port: 8089
+          initialDelaySeconds: 180
+          periodSeconds: 20
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailsend-service
+  namespace: skishop
+spec:
+  selector:
+    app: mailsend-service
+  ports:
+  - port: 8089
+    targetPort: 8089
+  type: ClusterIP

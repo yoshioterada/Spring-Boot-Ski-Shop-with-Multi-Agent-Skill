@@ -1,0 +1,51 @@
+groups:
+  - name: ai-analyzer-alerts
+    rules:
+      # LLM エラー率 > 5% / 5min → Slack 通知
+      - alert: AiAnalyzerHighErrorRate
+        expr: >
+          sum(rate(ai_analyzer_requests_total{status=~"5.."}[5m]))
+          / sum(rate(ai_analyzer_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: ai-support
+        annotations:
+          summary: "AI Analyzer エラー率 > 5%"
+          description: "直近 5 分間のエラー率が {{ $value | humanizePercentage }} です。CircuitBreaker の状態を確認してください。"
+
+      # LLM 呼出失敗 > 3 回連続 → CircuitBreaker OPEN 連動
+      - alert: AiAnalyzerCircuitBreakerOpen
+        expr: >
+          resilience4j_circuitbreaker_state{name="azureOpenAi"} == 1
+        for: 1m
+        labels:
+          severity: critical
+          team: ai-support
+        annotations:
+          summary: "Azure OpenAI CircuitBreaker OPEN"
+          description: "azureOpenAi CircuitBreaker が OPEN 状態です。Azure OpenAI のステータスを確認してください。"
+
+      # 月次 LLM コスト > $30 → Slack 通知 (D-COM-06)
+      - alert: AiAnalyzerHighMonthlyCost
+        expr: >
+          sum(increase(ai_analyzer_cost_usd_total[30d])) > 30
+        for: 10m
+        labels:
+          severity: warning
+          team: ai-support
+        annotations:
+          summary: "AI Analyzer 月次コスト > $30"
+          description: "推定月次 LLM コストが ${{ $value | humanize }} に達しました。F1 チャットの一時制限を検討してください。"
+
+      # F3 週次バッチ失敗
+      - alert: AiAnalyzerWeeklyBatchFailed
+        expr: >
+          increase(ai_analyzer_requests_total{endpoint="weekly-summary-batch", status=~"5.."}[1h]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: ai-support
+        annotations:
+          summary: "F3 週次サマリーバッチ失敗"
+          description: "週次サマリー生成バッチが失敗しました。ログを確認し手動再実行を検討してください。"

@@ -3,7 +3,9 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth-options';
 
-const CART_SERVICE_URL = process.env.CART_SERVICE_URL || 'http://localhost:8084';
+// Docker では API Gateway 経由で payment-cart-service に到達する。
+const CART_SERVICE_URL =
+  process.env.CART_SERVICE_URL || process.env.API_GATEWAY_URL || 'http://localhost:8090';
 
 export async function PUT(
   request: NextRequest,
