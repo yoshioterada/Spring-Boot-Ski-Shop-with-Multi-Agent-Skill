@@ -1,7 +1,452 @@
 # 要件トレーサビリティマトリクス
 
-`front-end-need.md` の全要件 ID が、どのフェーズで実装され、どのファイルで確認可能かを定義する。
-検証時はこのマトリクスを参照し、全要件が実装済みであることを確認する。
+Java 5 / Struts 1.3 → Java 21 / Spring Boot 3.2.x 移行における、全移行コンポーネントが
+どのフェーズで実装され、どのファイルに対応するかを定義する。
+検証時はこのマトリクスを参照し、移行漏れがないことを確認する。
+
+> **詳細**: 全 29 Action の URL・ロール・移行先 Controller の完全一覧は `docs/migration/DESIGN.md §2.3` を参照。
+> 全 20 Repository の追加メソッド定義は `docs/migration/PLAN.md §5` を参照。
+
+---
+
+## 1. フェーズ別 移行スコープ一覧
+
+| Phase | 主要移行対象 | 移行数 | 検証コマンド |
+|-------|-----------|--------|------------|
+| Phase 0 | 事前準備・ベースライン記録 | — | 手動確認 |
+| Phase 1 | pom.xml・設定ファイル・パッケージ構成 | — | `mvn clean compile` |
+| Phase 2 | Domain POJO → JPA @Entity | 22 エンティティ | `@DataJpaTest` |
+| Phase 3 | DAO → Spring Data JPA Repository | 20 リポジトリ | `mvn test -Dtest="*RepositoryTest"` |
+| Phase 4 | Service 移行・CheckoutService 新設 | 14 サービス | `mvn test -Dtest="*ServiceTest"` |
+| Phase 5 | Action → Controller、ActionForm → record DTO | 29 Action → 8 Controller、12 DTO | `mvn test -Dtest="*ControllerTest"` |
+| Phase 6 | JSP + Tiles → Thymeleaf + Layout Dialect | 30+ テンプレート | HTTP 200 全画面確認 |
+| Phase 7 | Spring Security 統合・パスワード移行 | 認証/認可設定 | Spring Security Test |
+| Phase 8 | テスト実装・カバレッジ確認 | — | `mvn clean verify -Djacoco.skip=false` |
+| Phase 9 | Docker・本番設定・OWASP チェック | — | `mvn clean verify` |
+
+---
+
+## 2. Struts Action → Spring Controller 移行マトリクス（Phase 5）
+
+**移行ルール**: 29 Action を 8 Controller に集約する。URL から `*.do` を排除し、RESTful URL に変換する。
+
+> **完全一覧**: `docs/migration/DESIGN.md §2.3` に全 29 Action の詳細が記載されている。以下は主要なマッピングを抜粋。
+
+### 2.1 AuthController（`/auth/`）
+
+| 移行元 Struts Action | 移行元 URL | 移行後 Controller#メソッド | 移行後 URL | HTTP |
+|---------------------|-----------|--------------------------|-----------|------|
+| `LoginAction` | `/login.do` | `AuthController#showLogin` | `/auth/login` | GET |
+| `LoginAction` (POST) | `/login.do` | `AuthController#login` | `/auth/login` | POST |
+| `LogoutAction` | `/logout.do` | Spring Security | `/auth/logout` | POST |
+| `PasswordResetAction` | `/password/reset.do` | `AuthController#showPasswordReset` | `/auth/password/reset` | GET |
+| `PasswordResetAction` (POST) | `/password/reset.do` | `AuthController#requestPasswordReset` | `/auth/password/reset` | POST |
+| `PasswordChangeAction` | `/password/change.do` | `AuthController#changePassword` | `/auth/password/change` | POST |
+
+**確認ファイル**: `appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/AuthController.java`
+
+```bash
+grep -n "@GetMapping\|@PostMapping\|@RequestMapping" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/AuthController.java
+```
+
+### 2.2 ProductController（`/products/`）
+
+| 移行元 Struts Action | 移行元 URL | 移行後 Controller#メソッド | 移行後 URL | HTTP |
+|---------------------|-----------|--------------------------|-----------|------|
+| `ProductListAction` | `/products.do` | `ProductController#list` | `/products` | GET |
+| `ProductDetailAction` | `/product.do?id=xxx` | `ProductController#detail` | `/products/{id}` | GET |
+| `ProductSearchAction` | `/search.do` | `ProductController#search` | `/products/search` | GET |
+
+**確認ファイル**: `appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/ProductController.java`
+
+### 2.3 CartController（`/cart/`）
+
+| 移行元 Struts Action | 移行元 URL | 移行後 Controller#メソッド | 移行後 URL | HTTP |
+|---------------------|-----------|--------------------------|-----------|------|
+| `CartViewAction` | `/cart.do` | `CartController#view` | `/cart` | GET |
+| `CartAddAction` | `/cart/add.do` | `CartController#addItem` | `/cart/items` | POST |
+| `CartUpdateAction` | `/cart/update.do` | `CartController#updateItem` | `/cart/items/{itemId}` | POST |
+| `CartRemoveAction` | `/cart/remove.do` | `CartController#removeItem` | `/cart/items/{itemId}/remove` | POST |
+
+**確認ファイル**: `appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/CartController.java`
+
+### 2.4 CheckoutController（`/checkout/`）
+
+| 移行元 Struts Action | 移行元 URL | 移行後 Controller#メソッド | 移行後 URL | HTTP |
+|---------------------|-----------|--------------------------|-----------|------|
+| `CheckoutViewAction` | `/checkout.do` | `CheckoutController#view` | `/checkout` | GET |
+| `CheckoutConfirmAction` | `/checkout/confirm.do` | `CheckoutController#confirm` | `/checkout/confirm` | POST |
+| `CheckoutCompleteAction` | `/checkout/complete.do` | `CheckoutController#complete` | `/checkout/complete` | GET |
+
+**確認ファイル**: `appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/CheckoutController.java`
+
+### 2.5 OrderController（`/orders/`）
+
+| 移行元 Struts Action | 移行元 URL | 移行後 Controller#メソッド | 移行後 URL | HTTP |
+|---------------------|-----------|--------------------------|-----------|------|
+| `OrderListAction` | `/orders.do` | `OrderController#list` | `/orders` | GET |
+| `OrderDetailAction` | `/orders/detail.do?id=xxx` | `OrderController#detail` | `/orders/{id}` | GET |
+| `OrderCancelAction` | `/orders/cancel.do` | `OrderController#cancel` | `/orders/{id}/cancel` | POST |
+
+**確認ファイル**: `appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/OrderController.java`
+
+**IDOR 防止確認**:
+```bash
+grep -n "findByIdAndUserId\|@AuthenticationPrincipal" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/OrderController.java
+```
+
+### 2.6 AccountController（`/account/`）
+
+| 移行元 Struts Action | 移行元 URL | 移行後 Controller#メソッド | 移行後 URL | HTTP |
+|---------------------|-----------|--------------------------|-----------|------|
+| `AccountViewAction` | `/account.do` | `AccountController#view` | `/account` | GET |
+| `AccountEditAction` | `/account/edit.do` | `AccountController#update` | `/account` | POST |
+| `AddressListAction` | `/account/addresses.do` | `AccountController#addresses` | `/account/addresses` | GET |
+| `AddressEditAction` | `/account/address/edit.do` | `AccountController#updateAddress` | `/account/addresses/{id}` | POST |
+
+**確認ファイル**: `appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/AccountController.java`
+
+### 2.7 AdminProductController（`/admin/products/`）
+
+| 移行元 Struts Action | 移行元 URL | 移行後 Controller#メソッド | 移行後 URL | HTTP |
+|---------------------|-----------|--------------------------|-----------|------|
+| `AdminProductListAction` | `/admin/products.do` | `AdminProductController#list` | `/admin/products` | GET |
+| `AdminProductCreateAction` | `/admin/product/create.do` | `AdminProductController#showCreate` | `/admin/products/new` | GET |
+| `AdminProductCreateAction` (POST) | `/admin/product/create.do` | `AdminProductController#create` | `/admin/products` | POST |
+| `AdminProductEditAction` | `/admin/product/edit.do` | `AdminProductController#showEdit` | `/admin/products/{id}` | GET |
+| `AdminProductEditAction` (POST) | `/admin/product/edit.do` | `AdminProductController#update` | `/admin/products/{id}` | POST |
+| `AdminProductDeleteAction` | `/admin/product/delete.do` | `AdminProductController#delete` | `/admin/products/{id}` | POST |
+
+**確認ファイル**: `appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/AdminProductController.java`
+
+**@PreAuthorize 確認**:
+```bash
+grep -n "@PreAuthorize" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/AdminProductController.java
+```
+
+### 2.8 AdminOrderController（`/admin/orders/`）
+
+| 移行元 Struts Action | 移行元 URL | 移行後 Controller#メソッド | 移行後 URL | HTTP |
+|---------------------|-----------|--------------------------|-----------|------|
+| `AdminOrderListAction` | `/admin/orders.do` | `AdminOrderController#list` | `/admin/orders` | GET |
+| `AdminOrderDetailAction` | `/admin/orders/detail.do` | `AdminOrderController#detail` | `/admin/orders/{id}` | GET |
+| `AdminOrderStatusAction` | `/admin/orders/status.do` | `AdminOrderController#updateStatus` | `/admin/orders/{id}/status` | POST |
+
+**確認ファイル**: `appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/AdminOrderController.java`
+
+---
+
+## 3. ActionForm → DTO (record) 移行マトリクス（Phase 5）
+
+**移行ルール**: 全 ActionForm を Bean Validation アノテーション付き Java `record` に変換する。
+`validate()` メソッドのロジックは `@NotBlank` / `@Email` / `@Size` 等に置換する。
+
+| 移行元 ActionForm | 移行後 record DTO | バリデーション | 確認ファイルパス |
+|-----------------|-----------------|-------------|--------------|
+| `LoginForm` | `LoginRequest` | `@NotBlank @Email @Size(max=255)` (email), `@NotBlank @Size(min=8,max=100)` (password) | `dto/request/LoginRequest.java` |
+| `RegisterForm` | `RegisterRequest` | email + password + `@NotBlank` (name) | `dto/request/RegisterRequest.java` |
+| `ProductSearchForm` | `ProductSearchRequest` | `@Size(max=200)` (keyword), category | `dto/request/ProductSearchRequest.java` |
+| `CartAddForm` | `CartAddRequest` | `@NotBlank` (productId), `@Min(1) @Max(99)` (quantity) | `dto/request/CartAddRequest.java` |
+| `CartUpdateForm` | `CartUpdateRequest` | `@Min(1) @Max(99)` (quantity) | `dto/request/CartUpdateRequest.java` |
+| `CheckoutForm` | `CheckoutRequest` | address fields, couponCode | `dto/request/CheckoutRequest.java` |
+| `AccountEditForm` | `AccountUpdateRequest` | `@NotBlank @Size(max=100)` (name) | `dto/request/AccountUpdateRequest.java` |
+| `PasswordChangeForm` | `PasswordChangeRequest` | `@NotBlank @Size(min=8,max=100)` | `dto/request/PasswordChangeRequest.java` |
+| `AddressForm` | `AddressRequest` | address fields, `@NotBlank` | `dto/request/AddressRequest.java` |
+| `AdminProductForm` | `AdminProductRequest` | `@NotBlank @Size(max=200)` (name), `@Positive` (price) | `dto/request/AdminProductRequest.java` |
+| `AdminOrderStatusForm` | `AdminOrderStatusRequest` | `@NotBlank` (status) | `dto/request/AdminOrderStatusRequest.java` |
+| `CouponApplyForm` | `CouponApplyRequest` | `@NotBlank @Size(max=50)` (couponCode) | `dto/request/CouponApplyRequest.java` |
+
+**一括確認コマンド**:
+```bash
+# record クラスの数を確認（12 件あるか）
+find appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/dto/request/ \
+  -name "*.java" | xargs grep -l "^public record" | wc -l
+
+# @Valid が Controller に漏れなく付与されているか
+grep -rn "@Valid" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/
+```
+
+---
+
+## 4. DAO → Repository 移行マトリクス（Phase 3）
+
+**移行ルール**: 全 DAO 実装クラスを `JpaRepository<Entity, String>` を extends する interface に置換する。
+実装クラス（`*DaoImpl.java`）は不要。Spring Data JPA が自動生成する。
+
+| 移行元 DAO | 移行後 Repository | 主要追加メソッド | 確認ファイルパス |
+|-----------|-----------------|---------------|--------------|
+| `UserDao` / `UserDaoImpl` | `UserRepository` | `findByEmail`, `findByStatus`, `findByEmailAndStatus` | `repository/UserRepository.java` |
+| `ProductDao` / `ProductDaoImpl` | `ProductRepository` | `findByCategory`, `findByStatus`, `JpaSpecificationExecutor` (動的検索) | `repository/ProductRepository.java` |
+| `CategoryDao` / `CategoryDaoImpl` | `CategoryRepository` | `findByParentIsNull`, `findByStatus` | `repository/CategoryRepository.java` |
+| `CartDao` / `CartDaoImpl` | `CartRepository` | `findByUserId`, `findBySessionId` | `repository/CartRepository.java` |
+| `CartItemDao` / `CartItemDaoImpl` | `CartItemRepository` | `findByCartId`, `deleteByCartId` | `repository/CartItemRepository.java` |
+| `OrderDao` / `OrderDaoImpl` | `OrderRepository` | `findByUserId`, `findByIdAndUserId`, `findByStatus` | `repository/OrderRepository.java` |
+| `OrderItemDao` / `OrderItemDaoImpl` | `OrderItemRepository` | `findByOrderId` | `repository/OrderItemRepository.java` |
+| `PaymentDao` / `PaymentDaoImpl` | `PaymentRepository` | `findByOrderId`, `findByStatus` | `repository/PaymentRepository.java` |
+| `ShipmentDao` / `ShipmentDaoImpl` | `ShipmentRepository` | `findByOrderId`, `findByStatus` | `repository/ShipmentRepository.java` |
+| `AddressDao` / `AddressDaoImpl` | `AddressRepository` | `findByUserId`, `findByIdAndUserId` | `repository/AddressRepository.java` |
+| `PointDao` / `PointDaoImpl` | `PointRepository` | `findByUserId` (残高), `findExpiringBefore` | `repository/PointRepository.java` |
+| `PointHistoryDao` / `PointHistoryDaoImpl` | `PointHistoryRepository` | `findByUserId`, `findByUserIdAndCreatedAtBetween` | `repository/PointHistoryRepository.java` |
+| `CouponDao` / `CouponDaoImpl` | `CouponRepository` | `findByCode`, `findByStatus`, `findAvailableByUserId` | `repository/CouponRepository.java` |
+| `CouponUsageDao` / `CouponUsageDaoImpl` | `CouponUsageRepository` | `findByCouponIdAndUserId`, `countByCouponId` | `repository/CouponUsageRepository.java` |
+| `SecurityLogDao` / `SecurityLogDaoImpl` | `SecurityLogRepository` | `countByUserIdAndEventTypeAndCreatedAtAfter`, `findByUserId` | `repository/SecurityLogRepository.java` |
+| `StockDao` / `StockDaoImpl` | `StockRepository` | `findByProductId`, `findLowStock` | `repository/StockRepository.java` |
+| `TaxDao` / `TaxDaoImpl` | `TaxRepository` | `findByActiveTrue` | `repository/TaxRepository.java` |
+| `EmailQueueDao` / `EmailQueueDaoImpl` | `EmailQueueRepository` | `findByStatus`, `findPendingByCreatedAtBefore` | `repository/EmailQueueRepository.java` |
+| `ReturnDao` / `ReturnDaoImpl` | `ReturnRepository` | `findByOrderId`, `findByUserId`, `findByStatus` | `repository/ReturnRepository.java` |
+| `AuditLogDao` / `AuditLogDaoImpl` | `AuditLogRepository` | `findByEntityTypeAndEntityId` | `repository/AuditLogRepository.java` |
+
+**一括確認コマンド**:
+```bash
+# Repository インターフェースの数を確認（20 件あるか）
+find appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/repository/ \
+  -name "*.java" | wc -l
+
+# 全 Repository が JpaRepository を extends しているか
+grep -rn "extends JpaRepository" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/repository/
+
+# UserRepository に SecurityLog のクエリが混在していないか（禁止）
+grep -n "SecurityLog\|security_log" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/repository/UserRepository.java
+
+# 文字列結合 SQL が存在しないか
+grep -rn '"SELECT\|"UPDATE\|"INSERT\|"DELETE' \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/repository/
+```
+
+---
+
+## 5. Service 移行マトリクス（Phase 4）
+
+**移行ルール**: 全 Service を `@Service` + コンストラクタインジェクションで再実装する。
+`new` による Repository 生成は禁止。`CheckoutService` は新設。
+
+| 移行元 Service | 移行後 @Service | 主要変更点 | 確認ファイルパス |
+|--------------|----------------|---------|--------------|
+| `AuthService` | `AuthService` | Spring Security + `UserDetailsService` 実装 | `service/AuthService.java` |
+| `UserService` | `UserService` | `@Transactional` メソッド分離 | `service/UserService.java` |
+| `ProductService` | `ProductService` | `@Transactional(readOnly = true)` | `service/ProductService.java` |
+| `CategoryService` | `CategoryService` | `@Transactional(readOnly = true)` | `service/CategoryService.java` |
+| `CartService` | `CartService` | `getOrCreateCart()`, `getActiveCart()`, `mergeSessionCart()` | `service/CartService.java` |
+| `OrderService` | `OrderService` | `@Transactional` / IDOR 検証 | `service/OrderService.java` |
+| `PaymentService` | `PaymentService` | `@Transactional` | `service/PaymentService.java` |
+| `ShipmentService` | `ShipmentService` | `@Transactional` | `service/ShipmentService.java` |
+| `PointService` | `PointService` | `reservePoints()`, `awardPoints()` を分離 | `service/PointService.java` |
+| `CouponService` | `CouponService` | `validateCoupon()` + `discountAmount()` | `service/CouponService.java` |
+| `EmailService` | `EmailService` | `EmailQueue` を同一 TX でキューイング | `service/EmailService.java` |
+| `StockService` | `StockService` | `checkStock()`, `deductStock()` を分離 | `service/StockService.java` |
+| `AdminService` | `AdminProductService` | `@PreAuthorize("hasRole('ADMIN')")` | `service/AdminProductService.java` |
+| *(新設)* | `CheckoutService` | 注文確定 11 ステップを単一 `@Transactional` で原子化 | `service/CheckoutService.java` |
+
+**CheckoutService の 11 ステップ確認**:
+```bash
+grep -n "// Step\|1\.\|2\.\|3\.\|4\.\|5\.\|6\.\|7\.\|8\.\|9\.\|10\.\|11\." \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/service/CheckoutService.java
+```
+
+**一括確認コマンド**:
+```bash
+# Service クラスの数を確認（14 件あるか）
+find appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/service/ \
+  -name "*Service.java" | wc -l
+
+# 全 Service に @Service が付与されているか
+grep -rn "@Service" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/service/
+
+# new による Repository 生成がないか
+grep -rn "= new.*Repository\|= new.*Service" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/service/
+```
+
+---
+
+## 6. Domain POJO → JPA Entity 移行マトリクス（Phase 2）
+
+**移行ルール**: 全 POJO に `@Entity` + `@Table(name="...")` を付与。
+`java.util.Date` を `java.time.LocalDateTime` / `LocalDate` に変換。
+UUID PK に `@GeneratedValue` は付与しない（Service 層で生成）。
+
+| 移行元 POJO | 移行後 @Entity | DB テーブル名 | PK 型 | 関連（LAZY） | 確認ファイルパス |
+|-----------|--------------|-----------|-------|------------|--------------|
+| `User` | `User` | `users` | `String` (UUID) | orders, addresses, cart | `model/User.java` |
+| `Product` | `Product` | `products` | `String` (UUID) | category, stockItems | `model/Product.java` |
+| `Category` | `Category` | `categories` | `String` (UUID) | parent, children, products | `model/Category.java` |
+| `Cart` | `Cart` | `carts` | `String` (UUID) | user, items | `model/Cart.java` |
+| `CartItem` | `CartItem` | `cart_items` | `String` (UUID) | cart, product | `model/CartItem.java` |
+| `Order` | `Order` | `orders` | `String` (UUID) | user, items, payment, shipment | `model/Order.java` |
+| `OrderItem` | `OrderItem` | `order_items` | `String` (UUID) | order, product | `model/OrderItem.java` |
+| `Payment` | `Payment` | `payments` | `String` (UUID) | order | `model/Payment.java` |
+| `Shipment` | `Shipment` | `shipments` | `String` (UUID) | order | `model/Shipment.java` |
+| `Address` | `Address` | `addresses` | `String` (UUID) | user | `model/Address.java` |
+| `Point` | `Point` | `points` | `String` (UUID) | user | `model/Point.java` |
+| `PointHistory` | `PointHistory` | `point_histories` | `String` (UUID) | user | `model/PointHistory.java` |
+| `Coupon` | `Coupon` | `coupons` | `String` (UUID) | campaign, usages | `model/Coupon.java` |
+| `CouponUsage` | `CouponUsage` | `coupon_usages` | `String` (UUID) | coupon, user | `model/CouponUsage.java` |
+| `SecurityLog` | `SecurityLog` | `security_logs` | `String` (UUID) | — | `model/SecurityLog.java` |
+| `Stock` | `Stock` | `stocks` | `String` (UUID) | product | `model/Stock.java` |
+| `Tax` | `Tax` | `taxes` | `String` (UUID) | — | `model/Tax.java` |
+| `EmailQueue` | `EmailQueue` | `email_queues` | `String` (UUID) | — | `model/EmailQueue.java` |
+| `Return` | `Return` | `returns` | `String` (UUID) | order, user | `model/Return.java` |
+| `AuditLog` | `AuditLog` | `audit_logs` | `String` (UUID) | — | `model/AuditLog.java` |
+| `Campaign` | `Campaign` | `campaigns` | `String` (UUID) | coupons | `model/Campaign.java` |
+| `Tier` | `Tier` | `tiers` | `String` (UUID) | — | `model/Tier.java` |
+
+**一括確認コマンド**:
+```bash
+# Entity クラスの数を確認（22 件あるか）
+find appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/model/ \
+  -name "*.java" | wc -l
+
+# 全 Entity に @Entity と @Table が付与されているか
+grep -rL "@Entity" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/model/
+
+# java.util.Date が残存していないか
+grep -rn "java\.util\.Date\|import java\.util\.Date" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/model/
+
+# @GeneratedValue が UUID PK に付与されていないか（禁止）
+grep -rn "@GeneratedValue" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/model/
+
+# @Column(name="...") が全フィールドに付与されているか（一部をサンプル確認）
+grep -c "@Column" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/model/User.java
+```
+
+---
+
+## 7. JSP → Thymeleaf テンプレート移行マトリクス（Phase 6）
+
+**移行ルール**: 全 JSP を Thymeleaf テンプレートに変換。Tiles レイアウトは `thymeleaf-layout-dialect` の `layout:decorate` に置換。
+`th:text` を使用し `th:utext`（XSS リスク）は禁止。
+
+> **全ファイルマッピング**: `docs/migration/DESIGN.md §10.3` に全 30+ ファイルの JSP→Thymeleaf 対応表が記載されている。
+
+### 7.1 レイアウト・共通テンプレート
+
+| 移行元 Tiles 定義 / JSP | 移行後 Thymeleaf テンプレート | 確認ポイント |
+|----------------------|---------------------------|-----------|
+| `tiles-defs.xml` `base.layout` | `templates/fragments/layout.html` | `layout:fragment="content"` が存在するか |
+| `header.jsp` | `templates/fragments/header.html` | `th:replace="~{fragments/header :: header}"` |
+| `footer.jsp` | `templates/fragments/footer.html` | `th:replace="~{fragments/footer :: footer}"` |
+| `navigation.jsp` | `templates/fragments/header.html`（統合） | `th:sec:authorize` でロールベース表示 |
+
+### 7.2 EC サイトページ
+
+| 移行元 JSP | 移行後テンプレート | 確認ポイント |
+|-----------|----------------|-----------|
+| `index.jsp` | `templates/index.html` | `layout:decorate="~{fragments/layout}"` |
+| `products/list.jsp` | `templates/products/list.html` | `th:each="product : ${products}"` |
+| `products/detail.jsp` | `templates/products/detail.html` | `th:text="${product.name}"` |
+| `products/search.jsp` | `templates/products/search.html` | フォームの `th:action="@{/products/search}"` |
+| `cart/view.jsp` | `templates/cart/view.html` | CSRF `th:action` |
+| `checkout/view.jsp` | `templates/checkout/view.html` | 配送先フォーム |
+| `checkout/confirm.jsp` | `templates/checkout/confirm.html` | 注文内容確認 |
+| `checkout/complete.jsp` | `templates/checkout/complete.html` | 注文番号表示 |
+| `orders/list.jsp` | `templates/orders/list.html` | `@{/orders/{id}(id=${order.id})}` |
+| `orders/detail.jsp` | `templates/orders/detail.html` | `th:if` でキャンセルボタン表示制御 |
+| `account/view.jsp` | `templates/account/index.html` | `#authentication` |
+| `account/addresses.jsp` | `templates/account/addresses.html` | 住所一覧 |
+| `auth/login.jsp` | `templates/auth/login.html` | `th:action="@{/auth/login}"` + CSRF |
+| `auth/register.jsp` | `templates/auth/register.html` | `th:errors="*{email}"` |
+
+### 7.3 管理画面ページ
+
+| 移行元 JSP | 移行後テンプレート | 確認ポイント |
+|-----------|----------------|-----------|
+| `admin/products/list.jsp` | `templates/admin/products/list.html` | `th:sec:authorize="hasRole('ADMIN')"` |
+| `admin/products/edit.jsp` | `templates/admin/products/edit.html` | PUT フォームの hidden `_method` |
+| `admin/orders/list.jsp` | `templates/admin/orders/list.html` | ステータスフィルター |
+| `admin/orders/detail.jsp` | `templates/admin/orders/detail.html` | ステータス更新フォーム |
+
+**一括確認コマンド**:
+```bash
+# テンプレートファイルの数を確認（30件以上あるか）
+find appmod-migrated-java21-spring-boot-3rd/src/main/resources/templates/ \
+  -name "*.html" | wc -l
+
+# layout:decorate を使用しているか（全ページテンプレートで使用必須）
+grep -rn "layout:decorate" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/templates/ | wc -l
+
+# th:utext が残存していないか（XSS 脆弱性）
+grep -rn "th:utext" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/templates/
+
+# *.do URL が残存していないか
+grep -rn '\.do"' \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/templates/
+
+# POST フォームで th:action を使っているか（CSRF 自動挿入のため必須）
+grep -rL "th:action" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/templates/ \
+  | xargs grep -l 'method="post"'
+```
+
+---
+
+## 8. 設定ファイル移行マトリクス（Phase 1）
+
+| 移行元ファイル | 移行後ファイル | 用途 |
+|-------------|-------------|------|
+| `config.properties` / `AppConfig.java` | `application.properties` + プロファイル別 | 共通設定 |
+| `struts-config.xml` | Controller の `@RequestMapping` アノテーション | Action マッピング |
+| `tiles-defs.xml` | `thymeleaf-layout-dialect` (`layout:decorate`) | レイアウト定義 |
+| `web.xml` (FilterDispatcher) | Spring Boot Embedded Tomcat | サーブレット設定 |
+| `log4j.properties` | `src/main/resources/logback-spring.xml` | ロギング設定 |
+| `db/schema.sql` | `db/migration/V1__initial_schema.sql` (Flyway) | DB スキーマ |
+| *(なし)* | `db/migration/V2__add_password_prefix.sql` (Flyway) | パスワード移行 |
+| `messages.properties` | `messages.properties` (同名・継続) | メッセージ国際化 |
+| `mail/*.xml` | Thymeleaf メールテンプレート (`mail/*.html`) | メールテンプレート |
+
+**確認コマンド**:
+```bash
+# Flyway マイグレーションファイルの確認
+ls appmod-migrated-java21-spring-boot-3rd/src/main/resources/db/migration/
+
+# V2 SQL でパスワードプレフィックス付与が正しいか
+grep -n "sha256\|CONCAT\|UPDATE users" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/db/migration/V2__*.sql
+
+# logback-spring.xml の存在確認
+ls appmod-migrated-java21-spring-boot-3rd/src/main/resources/logback-spring.xml
+```
+
+---
+
+## 9. セキュリティ移行マトリクス（Phase 7）
+
+| 移行元（Struts） | 移行後（Spring Security） | 確認ポイント |
+|----------------|------------------------|-----------|
+| `session.setAttribute("loginUser", user)` | `SecurityContextHolder`（Spring Security 管理） | `SecurityContextHolder.getContext().getAuthentication()` |
+| `session.getAttribute("loginUser")` | `@AuthenticationPrincipal UserDetails user` | Controller メソッド引数に付与 |
+| `session.invalidate()` | Spring Security ログアウト | `invalidateHttpSession(true)` |
+| Filter ベース認可 | `SecurityConfig.authorizeHttpRequests()` | 全 URL のカバレッジ確認 |
+| 手動ロールチェック | `@PreAuthorize("hasRole('ADMIN')")` | Service メソッドに付与 |
+| `PasswordHasher.encode()` SHA-256 | `DelegatingPasswordEncoder` (BCrypt + sha256) | `LegacySha256PasswordEncoder` |
+| *(なし)* | `CartMergeSuccessHandler` | ログイン成功時カートマージ |
+
+**確認コマンド**:
+```bash
+# SecurityConfig 必須設定の確認
+grep -n "csrf\|sessionFixation\|maximumSessions\|httpStrictTransportSecurity\|xssProtection\|frameOptions" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/config/SecurityConfig.java
+
+# CartMergeSuccessHandler の存在確認
+find appmod-migrated-java21-spring-boot-3rd/src/main/java/ \
+  -name "CartMergeSuccessHandler.java"
+
+# CustomUserDetailsService が UserDetailsPasswordService を implements しているか
+grep -n "implements.*UserDetailsPasswordService\|implements.*UserDetailsService.*UserDetailsPasswordService" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/security/CustomUserDetailsService.java
+```
 
 ---
 

@@ -18,7 +18,7 @@ applyTo:
 
 ```dockerfile
 # ✅ 良い例: マルチステージビルド
-FROM eclipse-temurin:25-jdk AS build
+FROM eclipse-temurin:21-jdk AS build
 WORKDIR /app
 COPY pom.xml .
 COPY .mvn .mvn
@@ -27,7 +27,7 @@ RUN ./mvnw dependency:go-offline
 COPY src src
 RUN ./mvnw package -DskipTests
 
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 ENTRYPOINT ["java", "-jar", "app.jar"]
@@ -35,7 +35,7 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 
 ```dockerfile
 # ❌ 悪い例: 単一ステージ（JDK + ソースコードが残る）
-FROM eclipse-temurin:25-jdk
+FROM eclipse-temurin:21-jdk
 WORKDIR /app
 COPY . .
 RUN ./mvnw package -DskipTests
@@ -68,22 +68,22 @@ target/
 
 ```dockerfile
 # ✅ 良い例: バージョン固定 + JRE
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:21-jre
 
 # ⚠️ 許容: バージョン固定（ダイジェストなし）
-FROM eclipse-temurin:25-jre-alpine
+FROM eclipse-temurin:21-jre-alpine
 
 # ❌ 悪い例: latest タグ
 FROM eclipse-temurin:latest
 
 # ❌ 悪い例: JDK をランタイムに使用
-FROM eclipse-temurin:25-jdk
+FROM eclipse-temurin:21-jdk
 ```
 
 | 選択基準 | 推奨イメージ | 備考 |
 |---------|-----------|------|
-| 標準環境 | `eclipse-temurin:25-jre` | 安定性重視 |
-| イメージサイズ重視 | `eclipse-temurin:25-jre-alpine` | Alpine ベースで軽量。glibc 依存に注意 |
+| 標準環境 | `eclipse-temurin:21-jre` | 安定性重視 |
+| イメージサイズ重視 | `eclipse-temurin:21-jre-alpine` | Alpine ベースで軽量。glibc 依存に注意 |
 | AWS 環境 | `amazoncorretto:25` | AWS 最適化 |
 
 ---
@@ -96,7 +96,7 @@ FROM eclipse-temurin:25-jdk
 
 ```dockerfile
 # ✅ 良い例: 非 root ユーザーの作成と使用
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:21-jre
 WORKDIR /app
 
 RUN groupadd -r appgroup && useradd -r -g appgroup -d /app -s /sbin/nologin appuser
@@ -109,7 +109,7 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 
 ```dockerfile
 # ❌ 悪い例: USER 命令なし（root で実行される）
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:21-jre
 COPY app.jar app.jar
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
@@ -166,7 +166,7 @@ ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
 |------|-------|------|
 | `MaxRAMPercentage` | 75.0 | コンテナメモリの 75% をヒープに割り当て（残りは Metaspace, スレッドスタック等） |
 | `HeapDumpOnOutOfMemoryError` | 有効 | OOM 発生時にヒープダンプを自動取得（障害分析用） |
-| `UseG1GC` | 有効 | Java 25 ではデフォルト。明示的に指定しても可 |
+| `UseG1GC` | 有効 | Java 21 ではデフォルト。明示的に指定しても可 |
 
 ---
 

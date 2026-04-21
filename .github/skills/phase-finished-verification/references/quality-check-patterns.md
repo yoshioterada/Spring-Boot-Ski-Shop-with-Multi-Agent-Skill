@@ -1,274 +1,563 @@
 # 品質チェックパターン集
 
-フェーズ完了検証で使用する手抜き検出パターン・コード品質基準の詳細を定義する。
+Java 5 → Java 21 / Struts 1.3 → Spring Boot 3.2.x 移行の完了検証で使用する
+手抜き検出パターン・コード品質基準の詳細を定義する。
 
 ---
 
 ## 1. コード品質 — grep 検索パターン
 
-検証時に以下のパターンを `grep_search` で実行し、該当箇所を記録する。
+検証時に以下のパターンを `grep_search` または `run_in_terminal` で実行し、該当箇所を記録する。
 
 ### 1.1 未完了作業の痕跡
 
 | パターン | 対象ファイル | 判定 |
 |---------|------------|------|
-| `TODO` | `frontend/src/**/*.{ts,tsx}` | ❌ Phase 完了時は全て解消済みであること |
+| `TODO` | `appmod-migrated-java21-spring-boot-3rd/src/main/java/**` | ❌ フェーズ完了時は全て解消済みであること |
 | `FIXME` | 同上 | ❌ 同上 |
 | `HACK` | 同上 | ❌ 同上 |
 | `XXX` | 同上 | ⚠️ コメント内容を確認し、一時的な回避策なら ❌ |
 | `TEMP` | 同上 | ❌ 仮実装は許可しない |
-| `placeholder` | 同上 | ⚠️ UI プレースホルダテキスト以外は ❌ |
+| `Not implemented` | 同上 | ❌ `throw new UnsupportedOperationException("Not implemented")` 等 |
 
-### 1.2 デバッグコードの残存
+```bash
+grep -rn "TODO\|FIXME\|HACK\|XXX\|TEMP\|Not implemented" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
+```
 
-| パターン | 対象ファイル | 判定 |
-|---------|------------|------|
-| `console.log(` | `frontend/src/**/*.{ts,tsx}`（テストファイル除外） | ❌ 本番コードに残してはならない |
-| `console.warn(` | 同上 | ⚠️ 意図的な警告出力か確認 |
-| `console.error(` | 同上 | ⚠️ エラーハンドリングの一部なら ✅ |
-| `debugger` | 同上 | ❌ |
-| `alert(` | 同上 | ❌ ユーザー通知は toast を使用すること |
-
-### 1.3 TypeScript 型安全性
+### 1.2 デバッグコード・ロギング問題
 
 | パターン | 対象ファイル | 判定 |
 |---------|------------|------|
-| `: any` | `frontend/src/**/*.{ts,tsx}`（型定義ファイル除外） | ❌ 型を明示すること |
-| `as any` | 同上 | ❌ 型の強制キャストは禁止 |
-| `// @ts-ignore` | 同上 | ❌ 型エラーの握りつぶし禁止 |
-| `// @ts-expect-error` | 同上 | ⚠️ テストコードなら許可、本番コードは ❌ |
-| `// eslint-disable` | 同上 | ⚠️ 正当な理由のコメントがあるか確認 |
+| `System.out.println` | `src/main/java/**` | ❌ SLF4J `@Slf4j` + `log.info()` を使用すること |
+| `System.err.println` | 同上 | ❌ 同上 |
+| `e.printStackTrace()` | 同上 | ❌ `log.error("msg: {}", e.getMessage(), e)` を使用すること |
+| `System.exit(` | 同上 | ❌ Spring Application Context を終了させない |
+| PII ログ出力 | 同上 | ❌ `email`, `password`, `address`, `credit` をログ出力しない |
 
-### 1.4 ハードコード検出
+```bash
+# System.out / System.err
+grep -rn "System\.out\.\|System\.err\." \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
 
-| パターン | 対象ファイル | 判定 |
-|---------|------------|------|
-| `localhost` | `frontend/src/**/*.{ts,tsx}`（`.env*` / テスト除外） | ❌ 環境変数を使用すること（§1.4） |
-| `8080` / `8081` / `8082` / `8083` / `8084` / `8085` / `8087` / `8088` / `8090` | 同上 | ❌ ポートのハードコード禁止 |
-| `http://` / `https://` | `frontend/src/**/*.{ts,tsx}`（テスト・コメント除外） | ⚠️ URL のハードコード。環境変数化されているか確認 |
-| `api/v1` | `frontend/src/app/(ec)/**`, `frontend/src/app/(admin)/**` | ❌ ブラウザコンポーネントから直接 API パスを参照しない（BFF 経由） |
+# e.printStackTrace
+grep -rn "\.printStackTrace()" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
 
-### 1.5 秘密情報のハードコード
+# PII をログに出力
+grep -rn "log\.\(info\|debug\|warn\|error\)" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/ \
+  | grep -iE "(email|password|address|credit|password_hash)"
+```
 
-| パターン | 対象ファイル | 判定 |
-|---------|------------|------|
-| `password` = (文字列リテラル代入) | `frontend/src/**/*.{ts,tsx}`（テスト・型定義除外） | ❌ |
-| `secret` = (文字列リテラル代入) | 同上 | ❌ |
-| `token` = (文字列リテラル代入) | 同上 | ⚠️ テストのモックデータか確認 |
-| `apiKey` = (文字列リテラル代入) | 同上 | ❌ |
+### 1.3 SQL インジェクション（文字列結合 SQL）— Critical
+
+**ルール**: SQL を文字列結合で構築することは絶対禁止。Spring Data JPA のメソッド名クエリまたは `@Query` + パラメータバインドを使用すること。
+
+| パターン | 判定 |
+|---------|------|
+| `"SELECT ... " + variable` | ❌ 絶対禁止（SQLi 脆弱性） |
+| `"UPDATE ... " + variable` | ❌ 絶対禁止 |
+| `"INSERT ... " + variable` | ❌ 絶対禁止 |
+| `"DELETE ... " + variable` | ❌ 絶対禁止 |
+| `jdbcTemplate.query(sql + var, ...)` | ❌ 絶対禁止 |
+
+```bash
+grep -rE '"(SELECT|UPDATE|INSERT|DELETE)[^"]*"\s*\+' \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
+
+grep -rE 'query\(\s*sql\s*\+|execute\(\s*sql\s*\+' \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
+```
+
+✅ **正しい実装例**:
+```java
+// ✅ Spring Data JPA メソッド名クエリ
+Optional<User> findByEmail(String email);
+
+// ✅ @Query + パラメータバインド
+@Query("SELECT u FROM User u WHERE u.email = :email AND u.status = :status")
+List<User> findActiveByEmail(@Param("email") String email, @Param("status") String status);
+```
+
+❌ **禁止パターン**:
+```java
+// ❌ 文字列結合 SQL（SQLi 脆弱性）
+String sql = "SELECT * FROM users WHERE email = '" + email + "'";
+jdbcTemplate.queryForObject(sql, User.class);
+```
+
+### 1.4 Spring DI 違反 — Critical
+
+| パターン | 判定 |
+|---------|------|
+| `@Autowired` フィールドインジェクション | ❌ コンストラクタインジェクションを使用すること |
+| `new UserService()` 等の直接生成 | ❌ Spring DI を使用すること |
+| `new UserRepository()` | ❌ 同上 |
+| Controller が Repository を直接 import | ❌ Service 経由を必ず通すこと |
+
+```bash
+# @Autowired フィールドインジェクション（@Bean, @Qualifier, @Primary 付きは除外）
+grep -rn "@Autowired" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/ \
+  | grep -v "@Bean\|@Qualifier\|@Primary"
+
+# new による Service/Repository 生成
+grep -rE "=\s*new\s+\w*(Service|Repository|Dao|Manager)\(" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
+
+# Controller からの Repository 直接参照
+grep -rn "Repository" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/
+
+# @Transactional を Controller に付与（Service 層のみに許可）
+grep -rn "@Transactional" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/
+```
+
+✅ **正しい実装例**:
+```java
+// ✅ コンストラクタインジェクション（Lombok @RequiredArgsConstructor 推奨）
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class AuthService {
+    private final UserRepository userRepository;
+    private final SecurityLogRepository securityLogRepository;
+    private final PasswordEncoder passwordEncoder;
+}
+```
+
+### 1.5 Java 型安全性
+
+| パターン | 判定 |
+|---------|------|
+| `Optional.get()` を直接呼び出し | ❌ `orElseThrow()` / `orElse()` / `map()` を使用すること |
+| `java.util.Date` の使用 | ❌ `java.time.LocalDateTime` / `LocalDate` を使用すること |
+| `new Date()` の使用 | ❌ 同上 |
+| コレクション戻り値に `null` | ❌ `List.of()` / `Collections.emptyList()` を返すこと |
+
+```bash
+# Optional.get() 直接呼び出し（findBy*.get() パターン等を検出）
+grep -rn "\.get()" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/ \
+  | grep -v "getClass\|getMessage\|getName\|getValue\|getType\|getId\|getUser\|getOrder\|getProduct\|getCart\|getKey\|getContent\|//\|*"
+
+# java.util.Date
+grep -rn "java\.util\.Date\|import java\.util\.Date\|new Date()" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
+
+# コレクション戻り値の null
+grep -rn "return null;" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/ \
+  | grep -v "//\|test\|Test"
+```
+
+✅ **正しい実装例**:
+```java
+// ✅ Optional を安全に使用
+User user = userRepository.findByEmail(email)
+    .orElseThrow(() -> new ResourceNotFoundException("User", email));
+
+// ✅ java.time を使用
+private LocalDateTime createdAt;
+private LocalDate deliveryDate;
+```
+
+### 1.6 禁止パッケージ・URL パターン
+
+| パターン | 判定 |
+|---------|------|
+| `import javax.servlet.*` | ❌ `import jakarta.servlet.*` に変換すること |
+| `import javax.persistence.*` | ❌ `import jakarta.persistence.*` に変換すること |
+| `import javax.validation.*` | ❌ `import jakarta.validation.*` に変換すること |
+| `import javax.mail.*` | ❌ `import jakarta.mail.*` に変換すること |
+| `*.do` URL パターン | ❌ 移行後のコードに `.do` を含めない |
+| `org.apache.struts.*` | ❌ Struts パッケージは完全排除 |
+
+```bash
+# javax.* パッケージ残存
+grep -rn "import javax\." \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
+
+# *.do URL パターン残存
+grep -rn '\.do"' \
+  appmod-migrated-java21-spring-boot-3rd/src/
+grep -rn 'action=".*\.do' \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/templates/
+
+# Struts パッケージ残存
+grep -rn "org\.apache\.struts" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
+```
+
+### 1.7 秘密情報のハードコード — Critical
+
+| パターン | 判定 |
+|---------|------|
+| `password = "..."` リテラル代入 | ❌ 環境変数 `${DB_PASSWORD}` を使用すること |
+| `secret = "..."` リテラル代入 | ❌ 同上 |
+| `url = "jdbc:postgresql://..."` リテラル代入 | ⚠️ `${DB_URL}` で外部化されているか確認 |
+| API キーのハードコード | ❌ 環境変数を使用すること |
+
+```bash
+# パスワード/シークレットのハードコード（プロパティファイル含む）
+grep -rE '(password|secret|api[_-]?key|apikey)\s*=\s*"[^$\{]' \
+  appmod-migrated-java21-spring-boot-3rd/src/
+
+# application.properties での直接記述（test プロファイルは除外）
+grep -rE '^spring\.datasource\.password\s*=\s*[^$\{]' \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/ \
+  | grep -v "test\|dev"
+```
 
 ---
 
 ## 2. アーキテクチャ準拠チェック
 
-### 2.1 BFF パターン準拠
+### 2.1 レイヤー依存方向
 
-**ルール**: ブラウザで実行されるコンポーネント（`src/app/(ec)/`, `src/app/(admin)/`）は、バックエンド API（`/api/v1/`）を **直接呼ばない**。必ず BFF Route Handler（`src/app/api/`）経由で呼び出す。
+**ルール**: `Controller → Service → Repository` の依存方向は一方向のみ。逆方向への依存は禁止。
 
-**検証方法**:
+```bash
+# Controller から Repository 直接参照チェック
+grep -rn "import com\.skishop\.repository\." \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/
 
-1. `src/app/(ec)/` と `src/app/(admin)/` 配下のファイルで以下を検索:
-   - `api/v1/` — 直接 API パスの参照
-   - `API_BASE_URL` — サーバー側環境変数の参照（ブラウザコンポーネントでは使用不可）
-   - `fetch('/api/v1/` — 直接 fetch 呼び出し
+# Repository から Service 参照チェック（逆方向依存）
+grep -rn "import com\.skishop\.service\." \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/repository/
+```
 
-2. ブラウザコンポーネントからの API 呼び出しは以下のパターンのみ許可:
-   - `/api/auth/...` — BFF 認証エンドポイント
-   - `/api/products/...` — BFF プロキシエンドポイント
-   - `/api/cart/...` — BFF カートエンドポイント
-   - その他 `/api/` 配下の BFF Route Handler
+### 2.2 1 Repository = 1 Aggregate Root の原則
 
-### 2.2 環境変数管理
+**ルール**: 各 Repository は 1 つの Aggregate Root（Entity）のみを管理する。
+`UserRepository` に `SecurityLog` のクエリが混在することは禁止。
 
-**ルール**: `front-end-need.md` §1.4 に基づき、API ベース URL は環境変数で一元管理する。
+```bash
+# UserRepository に SecurityLog クエリが混在していないか
+grep -rn "SecurityLog\|security_log" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/repository/UserRepository.java
+```
 
-**検証方法**:
+### 2.3 DTO はレコードクラス
 
-1. `src/lib/env.ts` が存在し、zod でバリデーションされていること
-2. `API_BASE_URL` が `src/bff/` 配下でのみ参照され、`src/app/(ec)/` や `src/app/(admin)/` からは参照されていないこと
-3. `.env.example` に全必要変数が記載されていること
+**ルール**: リクエスト DTO は Java `record` クラスとして定義する。旧来の POJO（`get/set` メソッド付きクラス）は使用しない。
 
-### 2.3 i18n-ready 準拠
+```bash
+# DTO ディレクトリのクラス種別確認
+grep -rn "^public record \|^public class " \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/dto/
 
-**ルール**: `front-end-need.md` §4.6 に基づき、UI テキストはハードコードせず翻訳キー方式を使用する。
+# ActionForm を継承するクラスが残存していないか
+grep -rn "extends ActionForm\|extends ValidatorForm" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
+```
 
-**検証方法**:
+✅ **正しい実装例**:
+```java
+// ✅ record クラスとして定義
+public record LoginRequest(
+    @NotBlank @Email @Size(max = 255) String email,
+    @NotBlank @Size(min = 8, max = 100) String password
+) {}
+```
 
-1. JSX 内の日本語テキストリテラルを検索（`grep_search` でかな/カナ/漢字を検索）
-2. 以下は許容:
-   - `locales/ja.json` 内のテキスト
-   - テストファイル内のテキスト
-   - コメント
-3. 以下は **不許可**:
-   - コンポーネントの JSX 内に直接記述された日本語文字列
-   - ボタンテキスト、ラベル、プレースホルダの直書き
+❌ **禁止パターン**:
+```java
+// ❌ 旧来の POJO（get/set 付き）
+public class LoginRequest {
+    private String email;
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+}
+```
 
-### 2.4 RFC 7807 エラーハンドリング準拠
+### 2.4 例外クラス階層
 
-**ルール**: `front-end-need.md` §4.2.1 に基づき、全 HTTP ステータスに対応したエラーハンドリングが実装されていること。
+```bash
+# カスタム例外クラスの存在確認
+find appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/ \
+  -name "ResourceNotFoundException.java" -o \
+  -name "BusinessException.java" -o \
+  -name "AuthenticationException.java"
 
-**検証方法**:
+# GlobalExceptionHandler の存在確認
+find appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/ \
+  -name "GlobalExceptionHandler.java"
 
-`src/lib/error-handler.ts` で以下の全ステータスの分岐が存在すること:
+# BusinessException に redirectUrl / messageKey フィールドがあるか
+grep -n "redirectUrl\|messageKey" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/exception/BusinessException.java
+```
 
-| HTTP ステータス | 必須処理 |
-|---------------|---------|
-| 400 | `errors` 配列 → フォームインラインエラー、なければトースト |
-| 401 | トークンリフレッシュ試行 → 失敗時ログインリダイレクト |
-| 403 | 「権限がありません」トースト |
-| 404 | 「見つかりません」+ 一覧ナビゲーション |
-| 422 | `detail` メッセージをトースト表示 |
-| 429 | 指数バックオフリトライ + トースト |
-| 500 | 「予期しないエラー」トースト |
-| 503 | サービス一時停止 + 自動リトライ |
-| ネットワークエラー | 「通信エラー」+ リトライボタン |
+### 2.5 例外握りつぶし検出
 
-### 2.5 縮退 UI 準拠
+```bash
+# catch ブロックで log も throw もしていない箇所を検出
+grep -rn -A3 "catch\s*(Exception\|RuntimeException\|Throwable" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/ \
+  | grep -v "log\.\|throw\|e\.getMessage\|// "
+```
 
-**ルール**: `front-end-need.md` §4.2.3 に基づき、画面ごとに必須/任意 API を分離し、任意 API 障害時はセクション非表示。
+✅ **正しいパターン**:
+```java
+try {
+    paymentService.process(paymentId);
+} catch (PaymentException e) {
+    log.error("決済処理失敗: paymentId={}, msg={}", paymentId, e.getMessage(), e);
+    throw new BusinessException("payment.error", e);
+}
+```
 
-**検証方法**:
-
-対象フェーズの画面で、§4.2.3 の縮退マトリクスに記載された全行が実装されていること:
-
-1. 任意 API: `Promise.allSettled` で呼び出し、`rejected` 時にセクション非表示
-2. 必須 API: 失敗時にエラープレースホルダ + リトライボタン表示
-3. フォールバックコンテンツ（AI チャット障害時の問い合わせリンク等）
-
-### 2.6 ページネーション準拠
-
-**ルール**: §4.2.2 の `PagedModel` 形式に準拠。
-
-**検証方法**:
-
-1. レスポンスの `content[]` + `page { size, number, totalElements, totalPages }` 構造を処理していること
-2. EC: 無限スクロール（Intersection Observer）で `page.number + 1 < page.totalPages` の間ロード
-3. Admin: テーブルページネーション（件数表示、ページサイズ切替 20/50/100）
-4. `page` パラメータが **0 始まり** であること（1 始まりになっていないか確認）
+❌ **禁止パターン**:
+```java
+try {
+    sendConfirmationEmail(order);
+} catch (Exception e) {
+    // 何もしない（握りつぶし）
+}
+```
 
 ---
 
 ## 3. セキュリティチェック
 
-### 3.1 トークン保存方式
+### 3.1 Bean Validation（@Valid）付与確認
 
-**ルール**: `front-end-need.md` §4.3.1 に基づき、トークンの保存先を厳格に管理する。
+```bash
+# @ModelAttribute に @Valid がない箇所を検出
+grep -rn "@ModelAttribute" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/ \
+  | grep -v "@Valid"
 
-| 検索パターン | 対象 | 判定 |
-|------------|------|------|
-| `localStorage.setItem` | `frontend/src/**/*.{ts,tsx}` | ⚠️ トークン保存に使用していたら ❌。ダークモード設定等は ✅ |
-| `sessionStorage.setItem` | 同上 | ⚠️ チェックアウト状態以外でトークンを保存していたら ❌ |
-| `document.cookie` | 同上 | ⚠️ Cookie を直接操作していないか確認（BFF / next-auth 経由であること） |
+# @RequestBody に @Valid がない箇所を検出
+grep -rn "@RequestBody" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/ \
+  | grep -v "@Valid"
+```
 
-### 3.2 入力バリデーション
+✅ **正しい実装例**:
+```java
+@PostMapping("/auth/login")
+public String login(@Valid @ModelAttribute LoginRequest request,
+                    BindingResult result,
+                    RedirectAttributes ra) {
+    if (result.hasErrors()) return "auth/login";
+    // ...
+}
+```
 
-**ルール**: 全フォームに zod スキーマバリデーションが実装されていること。
+### 3.2 IDOR 防止（オーナーシップ検証）
 
-**検証方法**:
+```bash
+# OrderController に @AuthenticationPrincipal があるか
+grep -rn "@AuthenticationPrincipal" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/controller/OrderController.java
 
-対象フェーズのフォームコンポーネントで:
+# リソースをユーザー ID で絞り込んでいるか
+grep -rn "findByIdAndUserId\|findByIdAndUserEmail\|AndUserId" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/
+```
 
-1. `react-hook-form` の `useForm` が使用されているか
-2. `@hookform/resolvers/zod` で zod スキーマが接続されているか
-3. zod スキーマが `front-end-need.md` §6.1 のバリデーションルール（文字数制限、メール形式、パスワード強度等）に準拠しているか
+### 3.3 Spring Security 設定の必須項目
 
-### 3.3 認可チェック
+```bash
+# @EnableWebSecurity, @EnableMethodSecurity の付与確認
+grep -n "@EnableWebSecurity\|@EnableMethodSecurity" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/config/SecurityConfig.java
 
-**ルール**: 管理画面のコンポーネントにロールチェックが実装されていること。
+# CSRF 保護・セッション固定攻撃対策・HSTS
+grep -n "csrf\|sessionFixation\|httpStrictTransportSecurity\|xssProtection" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/config/SecurityConfig.java
 
-**検証方法**:
+# xssProtection が非推奨 API を使っていないか（xss.enable() は禁止）
+grep -n "xss\.enable\b\|\.enable()" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/config/SecurityConfig.java
+```
 
-1. `src/middleware.ts` で `/admin/*` パスに ADMIN/MANAGER ロールチェックがあるか
-2. Admin レイアウト/コンポーネントでロール判定（`isAdmin`, `isManager`）が行われているか
-3. MANAGER ロールで ADMIN 専用機能が非表示になるか（§3.1 画面一覧の「必要ロール」列を参照）
+**確認すべき必須設定項目**:
+
+| 設定項目 | 期待値 | Critical か |
+|---------|--------|------------|
+| CSRF 保護 | `.csrf(Customizer.withDefaults())` | ❌ なければ Critical |
+| セッション固定対策 | `.sessionFixation().migrateSession()` | ❌ なければ High |
+| 最大セッション数 | `.maximumSessions(1)` | ⚠️ High |
+| XSS ヘッダー | `Customizer.withDefaults()`（`xss.enable()` 禁止） | ❌ なければ High |
+| HSTS | `includeSubDomains(true).maxAgeInSeconds(31536000)` | ⚠️ Medium |
+| X-Frame-Options | `DENY` | ❌ なければ High |
+
+### 3.4 パスワードエンコーダー設定
+
+```bash
+# DelegatingPasswordEncoder の設定確認
+grep -rn "DelegatingPasswordEncoder\|LegacySha256PasswordEncoder" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
+
+# UserDetailsPasswordService を implements しているか
+grep -rn "UserDetailsPasswordService\|updatePassword" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
+
+# LegacySha256PasswordEncoder の matches() が {sha256}<hash>$<salt> 形式を処理しているか
+grep -n "sha256\|split\|\\\$" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/util/LegacySha256PasswordEncoder.java
+```
 
 ---
 
-## 4. テスト品質チェック
+## 4. Thymeleaf テンプレートチェック
 
-### 4.1 テストファイルの存在
+### 4.1 XSS 対策
 
-対象フェーズで作成された以下のファイルカテゴリに対し、テストファイルが存在すること:
+```bash
+# th:utext 使用箇所（エスケープなし出力 — 原則禁止）
+grep -rn "th:utext" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/templates/
 
-| カテゴリ | テストファイルの命名規則 | 必須度 |
-|---------|----------------------|--------|
-| ページコンポーネント | `page.test.tsx` | 必須 |
-| 共通コンポーネント | `{component}.test.tsx` | 必須 |
-| hooks | `{hook}.test.ts` | 必須 |
-| lib ユーティリティ | `{util}.test.ts` | 必須 |
-| BFF Route Handler | `route.test.ts` | 推奨 |
-| zustand ストア | `{store}.test.ts` | 推奨 |
+# *.do URL が残存していないか
+grep -rn '\.do"' \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/templates/
 
-### 4.2 テストの充実度
-
-以下のパターンは「スタブテスト」として ❌ とする:
-
-```typescript
-// ❌ 空のテスト
-it('should work', () => {
-  expect(true).toBe(true);
-});
-
-// ❌ render のみでアサーションなし
-it('should render', () => {
-  render(<Component />);
-});
-
-// ❌ スナップショットテストのみ
-it('matches snapshot', () => {
-  const { container } = render(<Component />);
-  expect(container).toMatchSnapshot();
-});
+# POST フォームで th:action を使っているか（CSRF 自動挿入のため必須）
+grep -rn 'method="post"\|method='"'"'post'"'"'' \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/templates/ \
+  | grep -v "th:action"
 ```
 
-✅ 適切なテストの例:
+### 4.2 URL ハードコード禁止
 
-```typescript
-// ✅ レンダリング + コンテンツ確認
-it('should display product name', () => {
-  render(<ProductCard product={mockProduct} />);
-  expect(screen.getByText('スキーブーツ Pro')).toBeInTheDocument();
-});
-
-// ✅ ユーザー操作 + 結果確認
-it('should add item to cart on button click', async () => {
-  render(<AddToCartButton product={mockProduct} />);
-  await userEvent.click(screen.getByRole('button', { name: /カートに追加/ }));
-  expect(mockAddToCart).toHaveBeenCalledWith(mockProduct.id, 1);
-});
-
-// ✅ エラーハンドリングのテスト
-it('should display error message on validation failure', async () => {
-  server.use(
-    http.post('/api/auth/login', () => HttpResponse.json(problemDetail400, { status: 400 }))
-  );
-  render(<LoginForm />);
-  await userEvent.click(screen.getByRole('button', { name: /ログイン/ }));
-  expect(screen.getByText(/有効なメールアドレスを入力してください/)).toBeInTheDocument();
-});
+```bash
+# href / action に URL をハードコードしていないか（th:href / th:action を使うこと）
+grep -rn 'href="/\|action="/' \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/templates/ \
+  | grep -v "th:href\|th:action"
 ```
 
-### 4.3 テストカバレッジ基準
+### 4.3 Struts タグ残存確認
 
-| カテゴリ | 目標カバレッジ |
-|---------|-------------|
-| 共通コンポーネント（`src/components/`） | ≥ 80% |
-| lib ユーティリティ（`src/lib/`） | ≥ 90% |
-| hooks（`src/hooks/`） | ≥ 80% |
-| ページコンポーネント | ≥ 60%（MSW でモック） |
+```bash
+# 旧 Struts/JSTL タグが残存していないか
+grep -rn "<%@\|<html:form\|<html:text\|<logic:iterate\|<bean:write\|<bean:message" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/resources/templates/
+```
 
 ---
 
-## 5. スタブ実装検出パターン
+## 5. テスト品質チェック
 
-以下のパターンが本番コードに存在する場合、「手抜き実装」として ❌ とする:
+### 5.1 テストファイルの存在
+
+| カテゴリ | テストファイル命名規則 | 必須度 |
+|---------|---------------------|--------|
+| Service クラス | `{Service}Test.java` | 必須 |
+| Controller クラス | `{Controller}Test.java` | 必須（`@WebMvcTest`） |
+| Repository インターフェース | `{Repository}Test.java` | 必須（`@DataJpaTest`） |
+| Util クラス | `{Util}Test.java` | 必須 |
+| Entity スキーマ | スキーマ検証テスト | 必須（`@DataJpaTest`） |
+
+### 5.2 スタブテスト検出
+
+以下のパターンが存在する場合、「スタブテスト」として ❌ とする:
+
+```java
+// ❌ 空テスト
+@Test
+void test() {}
+
+// ❌ アサーションなしテスト
+@Test
+void should_findUser() {
+    userRepository.findByEmail("test@example.com");
+    // assert なし
+}
+
+// ❌ assertTrue(true) のみ
+@Test
+void should_doSomething() {
+    assertTrue(true);
+}
+```
+
+```bash
+# assertTrue(true) のみのテスト
+grep -rn "assertTrue(true)" \
+  appmod-migrated-java21-spring-boot-3rd/src/test/java/
+```
+
+✅ **正しいテスト例**:
+```java
+@Test
+@DisplayName("有効な認証情報でログインした場合、HOME にリダイレクトされる")
+void should_redirectToHome_when_validCredentialsProvided() throws Exception {
+    // Arrange
+    var user = createTestUser("{bcrypt}$2a$10$...", "ROLE_USER");
+    when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+
+    // Act
+    var result = mockMvc.perform(post("/auth/login")
+        .param("email", "user@example.com")
+        .param("password", "password123")
+        .with(csrf()));
+
+    // Assert
+    result.andExpect(status().is3xxRedirection())
+          .andExpect(redirectedUrl("/"));
+}
+```
+
+### 5.3 テスト命名規約
+
+```bash
+# should_ パターンが使われているか
+grep -rn "void should_" \
+  appmod-migrated-java21-spring-boot-3rd/src/test/java/ | wc -l
+
+# @DisplayName が付与されているか
+grep -rn "@DisplayName" \
+  appmod-migrated-java21-spring-boot-3rd/src/test/java/ | wc -l
+```
+
+### 5.4 テストカバレッジ基準
+
+| カテゴリ | 目標カバレッジ | 測定ツール |
+|---------|-------------|---------|
+| Service 層 | ≥ 80% | JaCoCo |
+| Controller 層 | ≥ 80%（`@WebMvcTest`） | JaCoCo |
+| Repository 層 | ≥ 70%（`@DataJpaTest`） | JaCoCo |
+| 全体 | ≥ 80% | JaCoCo |
+
+```bash
+# カバレッジ計測（Phase 8 のみ必須）
+cd appmod-migrated-java21-spring-boot-3rd
+mvn clean verify -Djacoco.skip=false
+# レポート: target/site/jacoco/index.html
+```
+
+---
+
+## 6. スタブ実装検出パターン
+
+以下のパターンが本番コード（`src/main/java/`）に存在する場合、「手抜き実装」として ❌ とする:
 
 | パターン | 説明 | 例 |
 |---------|------|-----|
-| 空の関数ボディ | イベントハンドラやコールバックが空 | `onClick={() => {}}` |
-| 固定値の返却 | API 呼び出しなしにダミーデータを返す | `return { products: [] }` |
-| コメントのみの関数 | ロジック未実装 | `// TODO: implement validation` |
-| 条件分岐の省略 | 全パスの処理が実装されていない | `if (status === 200) { ... }` で 400/500 が未処理 |
-| ハードコードされたテストデータ | 本番コードにモックデータが混在 | `const user = { name: 'テスト太郎' }` |
-| `throw new Error('Not implemented')` | 実装が完了していないマーカー | — |
-| `return null` の多用 | エラー時に何も表示しない | コンポーネントが条件不一致で `return null` |
+| 空のメソッドボディ | サービスメソッドが空 | `public void processOrder(Order o) {}` |
+| `UnsupportedOperationException` | 実装未完了マーカー | `throw new UnsupportedOperationException("Not implemented")` |
+| `return null`（コレクション型） | エラー時に `null` を返す | `List<Order> getOrders() { return null; }` |
+| TODO のみコメント | ロジック未実装 | `// TODO: implement inventory check` |
+| ハードコードされた本番データ | 固定値を業務データとして使用 | `private String adminEmail = "admin@skishop.com";` |
+
+```bash
+# throw new UnsupportedOperationException
+grep -rn "UnsupportedOperationException" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/
+
+# return null（コレクション型の可能性が高い箇所）
+grep -rn "return null;" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/
+
+# ハードコードされたメールアドレス（テスト・@Email アノテーション除外）
+grep -rn '"[a-zA-Z0-9._%+-]*@[a-zA-Z0-9.-]*\.[a-zA-Z]{2,}"' \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/ \
+  | grep -v "//\|test\|Test\|example\|@Email"
+```

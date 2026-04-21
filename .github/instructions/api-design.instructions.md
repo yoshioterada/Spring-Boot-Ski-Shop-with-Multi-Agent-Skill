@@ -65,7 +65,7 @@ applyTo: "**/controller/**/*.java"
 
 ### RFC 7807 Problem Details 形式の必須化
 - 全てのエラーレスポンスは **RFC 7807 Problem Details** 形式で統一する
-- Spring Boot 4.1 の `ProblemDetail` クラスを活用する
+- Spring Boot 3.2 の `ProblemDetail` クラスを活用する
 
 ```java
 // ✅ RFC 7807 準拠のエラーレスポンス

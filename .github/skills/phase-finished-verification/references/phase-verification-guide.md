@@ -1,10 +1,325 @@
 # フェーズ別検証ガイド
 
-各フェーズ固有の検証ポイントと重点確認事項を定義する。検証実施時はこのガイドを参照し、フェーズごとに特に注意すべき点を確認すること。
+Java 5 / Struts 1.3 → Java 21 / Spring Boot 3.2.x 移行における、各フェーズ固有の
+検証ポイントと重点確認事項を定義する。検証実施時はこのガイドとともに SKILL.md の
+`フェーズ別重点確認事項` セクションを参照し、フェーズごとに特に注意すべき点を確認すること。
 
 ---
 
-## Phase 0: プロジェクト基盤構築
+## Phase 0: 事前準備
+
+### 重点確認事項
+
+| # | 確認項目 | 確認方法 |
+|---|---------|---------|
+| 1 | JDK 21 がインストールされているか | `java -version` で `21.x.x` を確認 |
+| 2 | Maven 3.9.x がインストールされているか | `mvn -version` で `3.9.x` を確認 |
+| 3 | 現行アプリのベースライン動作記録が取得されているか | 全機能の動作確認メモが存在するか確認 |
+| 4 | `docs/migration/DESIGN.md` と `docs/migration/PLAN.md` の読み込みが完了しているか | 設計書レビュー記録があるか確認 |
+| 5 | `appmod-migrated-java21-spring-boot-3rd/` ディレクトリが作成されているか | `list_dir` で確認 |
+| 6 | 現行 DB スキーマが `src/main/resources/db/schema.sql` に存在するか | `file_search` で確認 |
+
+### 手抜き検出ポイント
+
+- ベースライン記録が「動く」という記述のみで、具体的な機能一覧・エラーログがない
+- JDK のインストール確認を省略して作業を開始している
+- PLAN.md / DESIGN.md を読まずに Phase 1 に着手している
+
+---
+
+## Phase 1: プロジェクト基盤構築
+
+### 重点確認事項
+
+| # | 確認項目 | 確認方法 |
+|---|---------|---------|
+| 1 | `pom.xml` に `spring-boot-starter-parent` バージョン `3.2.x` が設定されているか | `read_file` で pom.xml を確認 |
+| 2 | `thymeleaf-extras-springsecurity6` が依存関係に含まれているか（`th:sec` 使用に必須） | `grep "springsecurity6" pom.xml` |
+| 3 | `thymeleaf-layout-dialect` が含まれているか（Tiles 置換に必須） | `grep "layout-dialect" pom.xml` |
+| 4 | `flyway-core` と `flyway-database-postgresql` が含まれているか | `grep "flyway" pom.xml` |
+| 5 | `lombok` が `provided`/`optional` スコープで、かつ `annotationProcessorPaths` にも追加されているか | pom.xml の `<annotationProcessorPaths>` セクションを確認 |
+| 6 | `net.logstash.logback:logstash-logback-encoder` がバージョン明示で追加されているか（Spring BOM 外のため） | `grep "logstash" pom.xml` |
+| 7 | 禁止依存関係（`struts`, `log4j:1.x`, `commons-dbcp`, `javax.servlet.*`）が含まれていないか | pom.xml 全体を確認 |
+| 8 | `application.properties` に `server.error.include-stacktrace=never` が設定されているか | `read_file` で確認 |
+| 9 | `application.properties` に `spring.jpa.open-in-view=false` が設定されているか | `read_file` で確認 |
+| 10 | `application-test.properties` に `spring.flyway.enabled=false` と H2 `MODE=PostgreSQL` が設定されているか | `read_file` で確認 |
+| 11 | 秘密情報（`DB_PASSWORD` 等）が `application.properties` に直接記述されていないか | `grep -E "password\s*=\s*[^$\{]" src/main/resources/` |
+| 12 | パッケージ構成が `com.skishop.{controller,service,repository,model,dto,config,security,util,exception}` になっているか | `list_dir` で確認 |
+
+### 手抜き検出ポイント
+
+- `spring-boot-starter-parent` のバージョンが 3.2.x ではなく古い 2.x
+- `lombok` が `<scope>compile</scope>` のみで `annotationProcessorPaths` に追加されていない → コンパイル時に Lombok が機能しない
+- `application-prod.properties` に本番 DB の実際のパスワードがハードコードされている
+- `spring.jpa.open-in-view=true`（デフォルト値のまま）— View 層での N+1 を隠蔽する危険設定
+
+---
+
+## Phase 2: ドメインモデル移行
+
+### 重点確認事項
+
+| # | 確認項目 | 確認方法 |
+|---|---------|---------|
+| 1 | 全 22 エンティティが存在するか | `find model/ -name "*.java" \| wc -l` |
+| 2 | 全エンティティに `@Entity` と `@Table(name = "...")` が付与されているか | `grep -rL "@Entity" model/` |
+| 3 | UUID PK に `@GeneratedValue` が **付与されていない**か（Service 層で生成） | `grep -rn "@GeneratedValue" model/` |
+| 4 | `java.util.Date` が使われていないか（`java.time.*` を使用） | `grep -rn "java\.util\.Date" model/` |
+| 5 | 全フィールドに `@Column(name = "...")` でカラム名が明示されているか | 各 Entity ファイルをサンプル確認 |
+| 6 | `@OneToMany` に `cascade = ALL, orphanRemoval = true, fetch = LAZY` が設定されているか | `grep -rn "OneToMany" model/` |
+| 7 | LAZY コレクション関連に `@BatchSize(size = 50)` が付与されているか（N+1 対策） | `grep -rn "@BatchSize" model/` |
+| 8 | `@CreationTimestamp` と `@UpdateTimestamp` が `createdAt` / `updatedAt` に付与されているか | 各 Entity を確認 |
+| 9 | `@DataJpaTest` でスキーマが H2 上で正常に作成されるか | `mvn test -Dtest="*EntityTest"` |
+
+### 手抜き検出ポイント
+
+- Entity の PK に `@GeneratedValue(strategy = GenerationType.UUID)` が付与されている → Service 層での UUID 生成という設計原則に違反
+- `@Column` のカラム名指定がない → DB カラム名と Java フィールド名の命名規則が異なる場合にマッピング失敗
+- `@ManyToOne` に `fetch = FetchType.EAGER` が設定されている → 全クエリで関連を JOIN FETCH する性能劣化
+- `@BatchSize` が付与されていない → 一覧表示で N+1 クエリが発生する
+- `LocalDateTime` ではなく `Date` 型でタイムスタンプを保持 → タイムゾーン問題
+
+---
+
+## Phase 3: リポジトリ層移行
+
+### 重点確認事項
+
+| # | 確認項目 | 確認方法 |
+|---|---------|---------|
+| 1 | 全 20 リポジトリが `JpaRepository<Entity, String>` を extends しているか | `grep -rn "extends JpaRepository" repository/` |
+| 2 | `ProductRepository` に `JpaSpecificationExecutor` が追加されているか（動的検索用） | `grep "JpaSpecificationExecutor" repository/ProductRepository.java` |
+| 3 | `UserRepository` に `SecurityLog` のクエリが混在していないか（1 Repo = 1 Aggregate Root） | `grep -n "SecurityLog" repository/UserRepository.java` |
+| 4 | `SecurityLogRepository` が独立して定義されているか | `find repository/ -name "SecurityLogRepository.java"` |
+| 5 | 文字列結合 SQL が 1 件も存在しないか | `grep -rE '"(SELECT|UPDATE|INSERT|DELETE).*\+' repository/` |
+| 6 | `@DataJpaTest` でのCRUD テストが全 Repository で通過するか | `mvn test -Dtest="*RepositoryTest"` |
+| 7 | H2 テストに `MODE=PostgreSQL;NON_KEYWORDS=VALUE` が設定されているか | `application-test.properties` を確認 |
+| 8 | PLAN.md §5 に定義された追加メソッドが全て実装されているか | PLAN.md §5 の表と実装を突合 |
+
+### 手抜き検出ポイント
+
+- Repository インターフェースではなく実装クラス（`UserRepositoryImpl`）を作成している → Spring Data JPA の設計に反する
+- `@Query` アノテーションで JPQL ではなくネイティブ SQL を使用している → JPA の移植性が低下
+- `@Query` の `:param` バインドを使わず文字列結合 SQL を記述 → SQLi 脆弱性
+- `UserRepository` に `countByUserIdAndEventType`（SecurityLog 集計）を定義している → Aggregate Root 原則違反
+
+---
+
+## Phase 4: サービス層移行
+
+### 重点確認事項
+
+| # | 確認項目 | 確認方法 |
+|---|---------|---------|
+| 1 | 全 14 Service に `@Service` アノテーションが付与されているか | `grep -rn "@Service" service/` |
+| 2 | `new` による Service/Repository の生成が一切ないか | `grep -rE "= new.*Service\|= new.*Repository" service/` |
+| 3 | DB 更新メソッドに `@Transactional` が付与されているか | 各 Service の更新メソッドを確認 |
+| 4 | 読み取り専用メソッドに `@Transactional(readOnly = true)` が付与されているか | `grep -rn "readOnly = true" service/` |
+| 5 | `CheckoutService.confirmOrder()` が 11 ステップすべてを単一 `@Transactional` で実行しているか | `service/CheckoutService.java` を精読 |
+| 6 | `CartService` に `getOrCreateCart(HttpSession, String userId)` と `mergeSessionCart(String cartId, String userId)` が実装されているか | `grep -n "getOrCreateCart\|mergeSessionCart" service/CartService.java` |
+| 7 | `BusinessException` が `redirectUrl` と `messageKey` フィールドを持つか | `exception/BusinessException.java` を確認 |
+| 8 | `TaxService` が `AppConfig.getInstance()` ではなく `@ConfigurationProperties` または `@Value` で税率を取得しているか | `service/TaxService.java` を確認 |
+| 9 | サービスユニットテスト（Mockito）が全件通過するか | `mvn test -Dtest="*ServiceTest"` |
+
+### CheckoutService 11 ステップ確認
+
+```bash
+grep -n "checkStock\|reservePoints\|createOrder\|createOrderItems\|deductStock\|createPayment\|awardPoints\|clearCart\|emailQueue\|coupon\|discount" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/service/CheckoutService.java
+```
+
+11 ステップの原子化確認: ステップ 5 で例外が発生した場合、ステップ 1〜4 がロールバックされることを `CheckoutServiceTest` で検証すること。
+
+### 手抜き検出ポイント
+
+- `CheckoutService` が `@Transactional` なしに 11 ステップのメソッド呼び出しを行っている → 部分コミットで DB 不整合
+- `CartService.mergeSessionCart()` が未実装 → ゲストカートとログイン後カートが統合されない
+- `BusinessException` に `redirectUrl` がなく、Controller 側でハードコードしている
+- `PointService.reservePoints()` と `awardPoints()` が同一メソッドに統合されている → トランザクション設計の欠陥
+
+---
+
+## Phase 5: Web 層移行（Controller + DTO）
+
+### 重点確認事項
+
+| # | 確認項目 | 確認方法 |
+|---|---------|---------|
+| 1 | 29 Action が 8 Controller に集約されているか（DESIGN.md §2.3 参照） | `find controller/ -name "*Controller.java" \| wc -l` |
+| 2 | 全 Controller に `@Controller` + `@RequestMapping` が付与されているか | `grep -rn "@Controller\|@RequestMapping" controller/` |
+| 3 | 全リクエスト DTO 引数に `@Valid` が付与されているか | `grep -rn "@ModelAttribute\|@RequestBody" controller/ \| grep -v "@Valid"` |
+| 4 | URL パターンから `*.do` が完全に排除されているか | `grep -rn '\.do"' src/` |
+| 5 | 12 ActionForm が全て Bean Validation 付き `record` クラスに変換されているか | `find dto/request/ -name "*.java" \| xargs grep -l "^public record" \| wc -l` |
+| 6 | `OrderController` と `AccountController` に IDOR 防止（`@AuthenticationPrincipal` + オーナーシップ検証）が実装されているか | コントローラー内の `findByIdAndUserId` 等を確認 |
+| 7 | `RedirectAttributes` が `redirect:` の後の遷移に使われているか（PRG パターン） | `grep -rn "RedirectAttributes\|redirect:" controller/` |
+| 8 | Admin Controller メソッドに `@PreAuthorize("hasRole('ADMIN')")` が付与されているか | `grep -rn "@PreAuthorize" controller/Admin*` |
+| 9 | `@WebMvcTest` でのテストが全件通過するか | `mvn test -Dtest="*ControllerTest"` |
+
+### 手抜き検出ポイント
+
+- `@RestController` を誤って使用している → 画面遷移ではなく JSON レスポンスを返す
+- POST のフォーム送信後に `return "checkout/confirm"` と直接 View 名を返している → ブラウザバックで二重送信
+- `@Valid` がなく、バリデーション未実行のまま Service を呼んでいる
+- `OrderController` が `orderService.findById(orderId)` でユーザー ID チェックなしに取得 → IDOR 脆弱性
+
+---
+
+## Phase 6: ビュー層移行（Thymeleaf）
+
+### 重点確認事項
+
+| # | 確認項目 | 確認方法 |
+|---|---------|---------|
+| 1 | `templates/fragments/layout.html` が存在し `layout:fragment="content"` を持つか | `file_search` + `read_file` で確認 |
+| 2 | 全ページテンプレートで `layout:decorate="~{fragments/layout}"` を使用しているか | `grep -rn "layout:decorate" templates/ \| wc -l` と比較 |
+| 3 | `th:utext` の使用箇所がゼロか（XSS 対策） | `grep -rn "th:utext" templates/` |
+| 4 | POST フォームが全て `th:action="@{/...}"` を使用しているか（CSRF 自動挿入） | `grep -rn 'method="post"' templates/ \| grep -v "th:action"` |
+| 5 | `th:href="@{...}"` を使用し URL をハードコードしていないか | `grep -rn 'href="/' templates/ \| grep -v "th:href"` |
+| 6 | ロールベース表示が `th:if="${#authorization.expression('hasRole(...)') }"` or `th:sec:authorize` で実装されているか | `grep -rn "th:sec\|hasRole\|#authorization" templates/admin/` |
+| 7 | 統合テストで全画面 HTTP 200 が確認できるか | Spring Boot Test でのエンドポイントテスト |
+| 8 | 静的リソース（CSS/JS/画像）が `src/main/resources/static/` に配置されているか | `list_dir` で確認 |
+| 9 | JSP タグ（`<html:form>`, `<logic:iterate>` 等）が全テンプレートから排除されているか | `grep -rn "<html:\|<logic:\|<bean:\|<%@" templates/` |
+
+### 重点確認: Tiles → Layout Dialect 変換
+
+| 確認ポイント | 期待される実装 | 確認コマンド |
+|------------|-------------|-----------|
+| Tiles `base.layout` 相当 | `fragments/layout.html` の `layout:fragment="content"` | `grep -n "layout:fragment" templates/fragments/layout.html` |
+| 各ページの extends | `layout:decorate="~{fragments/layout}"` | `grep -rn "layout:decorate" templates/` |
+| ヘッダー・フッターの include | `th:replace="~{fragments/header :: header}"` | `grep -rn "th:replace" templates/fragments/layout.html` |
+| セキュリティ統合 | `th:sec:authorize="hasRole('USER')"` でメニュー制御 | `grep -rn "th:sec" templates/` |
+
+### 手抜き検出ポイント
+
+- 一部ページが `layout:decorate` を使わず独立した HTML ファイルとして実装されている → ヘッダー/フッターの二重実装
+- `th:text` の代わりに直接テキストをハードコードし Thymeleaf が機能していない箇所がある
+- `<form action="/checkout/confirm" method="post">` のように `th:action` を使わず URL をハードコード → CSRF トークンが挿入されない
+- エラーメッセージを `th:text="${errorMessage}"` で表示しているが、`th:errors="*{fieldName}"` を使っていない → フォームバリデーションエラーが表示されない
+
+---
+
+## Phase 7: セキュリティ統合
+
+### 重点確認事項
+
+| # | 確認項目 | 確認方法 |
+|---|---------|---------|
+| 1 | `SecurityConfig` に `@EnableWebSecurity` と `@EnableMethodSecurity` が付与されているか | `grep -n "@EnableWebSecurity\|@EnableMethodSecurity" config/SecurityConfig.java` |
+| 2 | URL 認可設定が `/admin/**` → ADMIN のみ、`/account/**` → USER 以上、`/actuator/**` → ADMIN のみ（`/health`, `/info` 除く）になっているか | `read_file` で SecurityConfig の `authorizeHttpRequests()` を確認 |
+| 3 | `sessionFixation().migrateSession()` が設定されているか（セッション固定攻撃対策） | `grep -n "sessionFixation" config/SecurityConfig.java` |
+| 4 | CSRF 保護が `csrf(Customizer.withDefaults())` で有効になっているか | `grep -n "csrf" config/SecurityConfig.java` |
+| 5 | `xssProtection` が `Customizer.withDefaults()` を使用しているか（`xss.enable()` 非推奨） | `grep -n "xssProtection\|xss\." config/SecurityConfig.java` |
+| 6 | HSTS が `includeSubDomains(true).maxAgeInSeconds(31536000)` で設定されているか | `grep -n "httpStrict\|includeSubDomains" config/SecurityConfig.java` |
+| 7 | `LegacySha256PasswordEncoder.matches()` が `{sha256}<hash>$<salt>` 形式をパースしているか | `read_file` で `util/LegacySha256PasswordEncoder.java` を確認 |
+| 8 | `CustomUserDetailsService` が `UserDetailsService` **と** `UserDetailsPasswordService` の両方を implements しているか | `grep -n "implements" security/CustomUserDetailsService.java` |
+| 9 | `CartMergeSuccessHandler` が `AuthenticationSuccessHandler` を implements し、ログイン後カートマージを行うか | `find security/ -name "CartMergeSuccessHandler.java"` |
+| 10 | Flyway V2 SQL で `CONCAT('{sha256}', password_hash, '$', salt)` によるプレフィックス付与が行われているか | `read_file` で `db/migration/V2__*.sql` を確認 |
+| 11 | 未認証ユーザーが `/account/**` にアクセスした場合に `/auth/login` にリダイレクトされるか | Spring Security Test で確認 |
+| 12 | SHA-256 ハッシュのユーザーがログインでき、BCrypt に自動アップグレードされるか | `LegacySha256PasswordEncoderTest` で検証 |
+
+### 重点確認: DelegatingPasswordEncoder 構成
+
+```java
+// 以下の構成になっているか確認
+@Bean
+public PasswordEncoder passwordEncoder() {
+    Map<String, PasswordEncoder> encoders = new HashMap<>();
+    encoders.put("bcrypt", new BCryptPasswordEncoder());
+    encoders.put("sha256", new LegacySha256PasswordEncoder());
+    return new DelegatingPasswordEncoder("bcrypt", encoders);
+}
+```
+
+```bash
+grep -n "DelegatingPasswordEncoder\|LegacySha256\|bcrypt\|sha256" \
+  appmod-migrated-java21-spring-boot-3rd/src/main/java/com/skishop/config/SecurityConfig.java
+```
+
+### 手抜き検出ポイント
+
+- `xssProtection` で非推奨の `.enable()` を使用 → Spring Security 非推奨 API 警告
+- `UserDetailsPasswordService` を implements していない → BCrypt 自動アップグレードが機能しない
+- Flyway V2 SQL が未作成または不正確 → SHA-256 ユーザーがログイン不可
+- `CartMergeSuccessHandler` が未定義で、ログイン後もゲストカートが失われる
+- `formLogin().loginProcessingUrl("/login")` が `th:action="@{/auth/login}"` と不一致 → ログイン POST が 404
+
+---
+
+## Phase 8: テスト実装・品質確認
+
+### 重点確認事項
+
+| # | 確認項目 | 確認方法 |
+|---|---------|---------|
+| 1 | 全テストが `mvn clean test` で 100% 通過するか | `mvn clean test` の出力を確認 |
+| 2 | `CheckoutServiceTest` が 11 ステップ全てのロールバック検証を含むか | テストファイルのメソッド一覧を確認 |
+| 3 | `LegacySha256PasswordEncoderTest` が既知の SHA-256 ハッシュ + ソルトで `matches()` を検証しているか | テストの `@Test` メソッドを確認 |
+| 4 | カートマージ統合テスト（未ログインカート → ログイン → カートマージ）が存在するか | `grep -rn "mergeSessionCart\|CartMerge" test/` |
+| 5 | JaCoCo で Service 80%+・全体 80%+ が達成されているか | `mvn clean verify -Djacoco.skip=false` 後 `target/site/jacoco/index.html` を確認 |
+| 6 | 全テストメソッドが `should_期待結果_when_条件` 命名規約に従っているか | `grep -rn "void test\|void check\|void verify" test/ \| grep -v "should_"` |
+| 7 | スタブテスト（`assertTrue(true)` のみ等）が存在しないか | `grep -rn "assertTrue(true)\|assume\|todo" test/` |
+| 8 | `@DataJpaTest` テストが H2 `MODE=PostgreSQL` で実行されているか | `application-test.properties` の DB URL を確認 |
+| 9 | セキュリティテスト（`@WithMockUser`）が認証・認可シナリオをカバーしているか | `grep -rn "@WithMockUser\|@WithAnonymousUser" test/` |
+
+### CheckoutService ロールバック検証のチェック
+
+```bash
+# 11 ステップ分のロールバックテストが存在するか（最低でも ステップ 1, 5, 8, 11 で例外発生テスト）
+grep -n "should.*when.*throws\|should.*when.*fail\|rollback" \
+  appmod-migrated-java21-spring-boot-3rd/src/test/java/com/skishop/service/CheckoutServiceTest.java
+```
+
+### 手抜き検出ポイント
+
+- `CheckoutServiceTest` が「基本的な注文確定フロー」のみ検証し、ロールバックテストがない
+- テストで `@TestConfiguration` を使わずに実際の DB（PostgreSQL）に接続している
+- `@WebMvcTest` を使わず `@SpringBootTest` を Controller テストに使用している → テストが重くなる
+- カバレッジレポートを生成していない（`-Djacoco.skip=false` を実行していない）
+
+---
+
+## Phase 9: 最終検証・リリース準備
+
+### 重点確認事項
+
+| # | 確認項目 | 確認方法 |
+|---|---------|---------|
+| 1 | `mvn clean verify` が全テストを含めて成功するか | `mvn clean verify` の出力を確認 |
+| 2 | Dockerfile がマルチステージビルド（JDK ビルド → JRE 実行）になっているか | `read_file` で Dockerfile を確認 |
+| 3 | Dockerfile の実行ユーザーが非 root か | `grep -n "USER\|useradd\|groupadd" Dockerfile` |
+| 4 | Dockerfile に `HEALTHCHECK` が設定されているか | `grep -n "HEALTHCHECK" Dockerfile` |
+| 5 | JVM メモリが `-Xmx` 固定値ではなく `-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0` か | `grep -n "UseContainerSupport\|MaxRAMPercentage" Dockerfile` |
+| 6 | `.dockerignore` で `target/`, `.git/`, `*.md` が除外されているか | `read_file` で `.dockerignore` を確認 |
+| 7 | `application-prod.properties` の全秘密情報が `${ENV_VAR}` 形式か | `grep -E "password\s*=\s*[^$\{]" src/main/resources/application-prod.properties` |
+| 8 | OWASP Dependency Check で Critical CVE がゼロか | `mvn dependency-check:check` |
+| 9 | Docker イメージがビルドできるか | `docker build -t skishop-app .` |
+| 10 | `spring.profiles.active=prod` でアプリが起動し `/actuator/health` が `UP` を返すか | `curl http://localhost:8080/actuator/health` |
+| 11 | `README.md` に起動方法・必須環境変数一覧（`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `MAIL_HOST` 等）が記載されているか | `read_file` で README.md を確認 |
+
+### Dockerfile チェックリスト
+
+```dockerfile
+# ✅ 期待される構成（下記を確認）
+FROM eclipse-temurin:21-jdk AS build    # マルチステージ: JDK でビルド
+FROM eclipse-temurin:21-jre             # JRE のみの実行イメージ
+RUN groupadd -r skishop && useradd -r -g skishop skishop  # 非 root ユーザー
+USER skishop                            # 非 root で実行
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+HEALTHCHECK --interval=30s CMD curl -f http://localhost:8080/actuator/health || exit 1
+```
+
+```bash
+# ベースイメージが latest タグでないか確認（固定バージョン必須）
+grep -n "FROM" appmod-migrated-java21-spring-boot-3rd/Dockerfile | grep "latest"
+```
+
+### 手抜き検出ポイント
+
+- Dockerfile がシングルステージビルド（JDK イメージがそのままランタイムに使用されている）→ イメージサイズ膨大
+- `USER root` のまま（非 root ユーザーへの切り替えなし）→ セキュリティリスク
+- `-Xmx512m` のようなメモリ固定値 → コンテナのメモリリミットを活用できない
+- `.dockerignore` が未作成 → `target/` が全てイメージに含まれ巨大なイメージが生成される
+- `application-prod.properties` に `spring.datasource.password=password` のような直書き → Critical セキュリティ違反
 
 ### 重点確認事項
 

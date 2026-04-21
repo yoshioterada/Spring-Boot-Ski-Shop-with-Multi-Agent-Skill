@@ -230,12 +230,12 @@ applyTo: "**/pom.xml"
 ## 6. プラグイン管理
 
 - ビルドプラグインのバージョンも `<properties>` で管理する
-- `maven-compiler-plugin` の `source` / `target` / `release` が Java 25 に設定されているか確認する
+- `maven-compiler-plugin` の `source` / `target` / `release` が Java 21 に設定されているか確認する
 
 ```xml
-<!-- ✅ 良い例: Java 25 の設定 -->
+<!-- ✅ 良い例: Java 21 の設定 -->
 <properties>
-    <java.version>25</java.version>
+    <java.version>21</java.version>
     <maven.compiler.release>${java.version}</maven.compiler.release>
 </properties>
 ```
