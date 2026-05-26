@@ -13,9 +13,10 @@ import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.messaging.Message;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,7 +40,7 @@ class SpringCloudStreamEventPublisherTest {
     }
 
     @Test
-    @DisplayName("正常系: StreamBridge 経由でメッセージが送信される")
+    @DisplayName("正常系: StreamBridge 経由でメッセージが非同期送信される")
     @SuppressWarnings("unchecked")
     void should_sendMessage_when_publishCalled() {
         // Arrange
@@ -49,9 +50,9 @@ class SpringCloudStreamEventPublisherTest {
         // Act
         publisher.publish(event);
 
-        // Assert
+        // Assert (非同期のため timeout を使用)
         ArgumentCaptor<Message<String>> captor = ArgumentCaptor.forClass(Message.class);
-        verify(streamBridge).send(eq(BINDING_NAME), captor.capture());
+        verify(streamBridge, timeout(3000)).send(eq(BINDING_NAME), captor.capture());
 
         Message<String> sent = captor.getValue();
         assertThat(sent.getHeaders().get("eventType")).isEqualTo("user.created");
@@ -63,23 +64,21 @@ class SpringCloudStreamEventPublisherTest {
     }
 
     @Test
-    @DisplayName("異常系: StreamBridge が false を返す場合に EventPublishException がスローされる")
+    @DisplayName("異常系: StreamBridge が false を返してもcaller には例外が伝播しない（best-effort）")
     @SuppressWarnings("unchecked")
-    void should_throwEventPublishException_when_sendReturnsFalse() {
+    void should_notThrow_when_sendReturnsFalse() {
         // Arrange
         DomainEvent<String> event = DomainEvent.create("order.placed", "sales-service", "order-123");
         when(streamBridge.send(eq(BINDING_NAME), any(Message.class))).thenReturn(false);
 
-        // Act & Assert
-        assertThatThrownBy(() -> publisher.publish(event))
-                .isInstanceOf(EventPublishException.class)
-                .hasMessageContaining("Failed to send event")
-                .hasMessageContaining(event.eventId());
+        // Act & Assert - 非同期のため例外は伝播しない
+        assertThatCode(() -> publisher.publish(event)).doesNotThrowAnyException();
+        verify(streamBridge, timeout(3000)).send(eq(BINDING_NAME), any(Message.class));
     }
 
     @Test
-    @DisplayName("異常系: JSON シリアライズ失敗時に EventPublishException がスローされる")
-    void should_throwEventPublishException_when_serializationFails() throws Exception {
+    @DisplayName("異常系: JSON シリアライズ失敗時も caller には例外が伝播しない（best-effort）")
+    void should_notThrow_when_serializationFails() throws Exception {
         // Arrange
         ObjectMapper failingMapper = org.mockito.Mockito.mock(ObjectMapper.class);
         when(failingMapper.writeValueAsString(any()))
@@ -87,15 +86,12 @@ class SpringCloudStreamEventPublisherTest {
         var failPublisher = new SpringCloudStreamEventPublisher(streamBridge, failingMapper, BINDING_NAME);
         DomainEvent<String> event = DomainEvent.create("test.event", "test-service", "data");
 
-        // Act & Assert
-        assertThatThrownBy(() -> failPublisher.publish(event))
-                .isInstanceOf(EventPublishException.class)
-                .hasMessageContaining("Failed to serialize event")
-                .hasMessageContaining(event.eventId());
+        // Act & Assert - シリアライズ失敗は同期でキャッチされるが例外は投げない
+        assertThatCode(() -> failPublisher.publish(event)).doesNotThrowAnyException();
     }
 
     @Test
-    @DisplayName("複雑なペイロード (Record) でも正常にシリアライズして送信される")
+    @DisplayName("複雑なペイロード (Record) でも正常にシリアライズして非同期送信される")
     @SuppressWarnings("unchecked")
     void should_serializeComplexPayload_when_recordPayloadProvided() {
         // Arrange
@@ -109,7 +105,7 @@ class SpringCloudStreamEventPublisherTest {
 
         // Assert
         ArgumentCaptor<Message<String>> captor = ArgumentCaptor.forClass(Message.class);
-        verify(streamBridge).send(eq(BINDING_NAME), captor.capture());
+        verify(streamBridge, timeout(3000)).send(eq(BINDING_NAME), captor.capture());
         assertThat(captor.getValue().getPayload()).contains("ORD-001").contains("5000");
     }
 }

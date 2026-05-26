@@ -8,9 +8,13 @@ import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
 /**
  * Spring Cloud Stream (Kafka) によるイベント発行実装。
- * Phase 2 で各サービスに導入する。
+ * JSON シリアライズは呼び出しスレッドで行い、
+ * Kafka 送信は仮想スレッドで非同期に実行する（best-effort）。
  */
 public class SpringCloudStreamEventPublisher implements EventPublisher {
 
@@ -19,6 +23,7 @@ public class SpringCloudStreamEventPublisher implements EventPublisher {
     private final StreamBridge streamBridge;
     private final ObjectMapper objectMapper;
     private final String defaultBindingName;
+    private final Executor asyncExecutor;
 
     public SpringCloudStreamEventPublisher(StreamBridge streamBridge,
                                             ObjectMapper objectMapper,
@@ -26,6 +31,7 @@ public class SpringCloudStreamEventPublisher implements EventPublisher {
         this.streamBridge = streamBridge;
         this.objectMapper = objectMapper;
         this.defaultBindingName = defaultBindingName;
+        this.asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
     @Override
@@ -40,19 +46,23 @@ public class SpringCloudStreamEventPublisher implements EventPublisher {
                     .setHeader("eventTimestamp", event.timestamp().toString())
                     .build();
 
-            boolean sent = streamBridge.send(defaultBindingName, message);
-            if (sent) {
-                log.info("Event sent to Kafka: type={}, eventId={}, correlationId={}",
-                        event.eventType(), event.eventId(), event.correlationId());
-            } else {
-                log.warn("Event not delivered (no subscribers on binding '{}'): type={}, eventId={}",
-                        defaultBindingName, event.eventType(), event.eventId());
-            }
+            asyncExecutor.execute(() -> {
+                try {
+                    boolean sent = streamBridge.send(defaultBindingName, message);
+                    if (sent) {
+                        log.info("Event sent to Kafka: type={}, eventId={}, correlationId={}",
+                                event.eventType(), event.eventId(), event.correlationId());
+                    } else {
+                        log.warn("Event not delivered (no subscribers on binding '{}'): type={}, eventId={}",
+                                defaultBindingName, event.eventType(), event.eventId());
+                    }
+                } catch (Exception e) {
+                    log.warn("Async event publishing failed (best effort): type={}, eventId={}, reason={}",
+                            event.eventType(), event.eventId(), e.getMessage());
+                }
+            });
         } catch (JsonProcessingException e) {
             log.warn("Failed to serialize event: eventId={}, reason={}", event.eventId(), e.getMessage());
-        } catch (Exception e) {
-            log.warn("Event publishing failed (best effort, continuing): type={}, eventId={}, reason={}",
-                    event.eventType(), event.eventId(), e.getMessage());
         }
     }
 }

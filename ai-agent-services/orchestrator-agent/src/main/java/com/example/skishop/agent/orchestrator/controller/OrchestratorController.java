@@ -35,7 +35,7 @@ public class OrchestratorController {
     }
 
     /**
-     * 待ち時間ストリーミング機能向けの軽量 Intent 抽出エンドポイント。
+     * 軽量 Intent 抽出エンドポイント。
      * CustomerIntent Worker のみを 1 回呼び出して行き先・スキルレベル等を素早く返す。
      */
     @PostMapping("/intent-only")

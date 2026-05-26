@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 
+import java.util.Objects;
 import java.util.UUID;
 
 public class OrchestratorAgentService {
@@ -53,36 +54,61 @@ public class OrchestratorAgentService {
     }
 
     /**
-     * 待ち時間ストリーミング用の軽量入口。
+     * 軽量 Intent 抽出エンドポイント。
      * CustomerIntent のみを 1 回呼び出し、行き先・スキルレベル等を返す。
      * フルオーケストレーション (orchestrate) より大幅に高速。
      */
     public CustomerIntentResult extractIntentOnly(OrchestratorRequest request) {
+        Objects.requireNonNull(request, "request must not be null");
+
+        String userId = request.userId();
         String sessionId = request.sessionId() == null || request.sessionId().isBlank()
                 ? UUID.randomUUID().toString()
                 : request.sessionId();
-        log.info("intentOnly start: userId={}, sessionId={}", request.userId(), sessionId);
+
+        if (log.isInfoEnabled()) {
+            log.info("intentOnly start: userId={}, sessionId={}", userId, sessionId);
+        }
+
         CustomerIntentResult result = workerInvoker.invokeCustomerIntent(
-                request.userId(), request.message(), sessionId);
-        log.info("intentOnly done: destination={}",
-                result != null && result.constraints() != null ? result.constraints().destination() : null);
+                userId, request.message(), sessionId);
+
+        if (log.isInfoEnabled()) {
+            String destination = result != null && result.constraints() != null
+                    ? result.constraints().destination()
+                    : null;
+            log.info("intentOnly done: destination={}", destination);
+        }
+
         return result;
     }
 
     public OrchestratorResponse orchestrate(OrchestratorRequest request, String jwtToken) {
+        Objects.requireNonNull(request, "request must not be null");
+        String userId = request.userId();
         String orderId = UUID.randomUUID().toString();
-        log.info("Orchestrator start: userId={}, orderId={}", request.userId(), orderId);
+        if (log.isInfoEnabled()) {
+            log.info("Orchestrator start: userId={}, orderId={}", userId, orderId);
+        }
+        var userProfile = userManagementClient.getUserProfile(userId, jwtToken);
+        if (log.isInfoEnabled()) {
+            String customerTier = userProfile.customerTier();
+            log.info("Orchestrator: userProfile fetched, tier={}", customerTier);
+        }
 
-        var userProfile = userManagementClient.getUserProfile(request.userId(), jwtToken);
-        log.info("Orchestrator: userProfile fetched, tier={}", userProfile.customerTier());
-
+        String userPrompt = Objects.requireNonNull(
+                buildUserPrompt(request, orderId, userProfile),
+                "userPrompt must not be null");
         OrchestratorResponse response = orchestratorChatClient.prompt()
                 .system(ORCHESTRATOR_SYSTEM_PROMPT)
-                .user(buildUserPrompt(request, orderId, userProfile))
+                .user(userPrompt)
                 .call()
                 .entity(OrchestratorResponse.class);
 
-        log.info("Orchestrator completed: orderId={}", orderId);
+        if (log.isInfoEnabled()) {
+            log.info("Orchestrator completed: orderId={}", orderId);
+        }
+
         return response;
     }
 
