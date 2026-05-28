@@ -27,6 +27,44 @@ public interface ProductRepository extends MongoRepository<Product, String> {
 
     Page<Product> findByNameContainingIgnoreCaseOrBrandContainingIgnoreCase(String name, String brand, Pageable pageable);
 
+    @Query("""
+            {
+              'status': 'ACTIVE',
+              '$expr': { '$gt': ['$stockQuantity', '$reservedQuantity'] },
+              '$or': [
+                { 'name': { '$regex': ?0, '$options': 'i' } },
+                { 'brand': { '$regex': ?0, '$options': 'i' } },
+                { 'description': { '$regex': ?0, '$options': 'i' } },
+                { 'tags': { '$regex': ?0, '$options': 'i' } }
+              ]
+            }
+            """)
+    Page<Product> searchActiveAvailable(String query, Pageable pageable);
+
+              @Query("""
+                {
+                  'categoryId': ?1,
+                  'status': 'ACTIVE',
+                  '$expr': { '$gt': ['$stockQuantity', '$reservedQuantity'] },
+                  '$or': [
+              { 'name': { '$regex': ?0, '$options': 'i' } },
+              { 'brand': { '$regex': ?0, '$options': 'i' } },
+              { 'description': { '$regex': ?0, '$options': 'i' } },
+              { 'tags': { '$regex': ?0, '$options': 'i' } }
+                  ]
+                }
+                """)
+              Page<Product> searchActiveAvailableByCategoryId(String query, String categoryId, Pageable pageable);
+
+    @Query("""
+            {
+              'categoryId': ?0,
+              'status': 'ACTIVE',
+              '$expr': { '$gt': ['$stockQuantity', '$reservedQuantity'] }
+            }
+            """)
+    Page<Product> findActiveAvailableByCategoryId(String categoryId, Pageable pageable);
+
     @Query("{ 'status': 'ACTIVE', 'stockQuantity': { $gte: 0, $lte: ?0 } }")
     Page<Product> findLowStockProducts(int threshold, Pageable pageable);
 }

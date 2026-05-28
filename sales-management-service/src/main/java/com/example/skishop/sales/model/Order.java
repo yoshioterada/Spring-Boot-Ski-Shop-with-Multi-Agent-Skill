@@ -141,6 +141,6 @@ public class Order {
     }
 
     public enum PaymentStatus {
-        PENDING, AUTHORIZED, CAPTURED, REFUNDED, FAILED
+        PENDING, AUTHORIZED, CAPTURED, REFUNDED, FAILED, CANCELLED
     }
 }

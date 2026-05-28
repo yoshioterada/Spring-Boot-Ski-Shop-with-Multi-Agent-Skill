@@ -35,15 +35,25 @@ export interface SearchResponse {
   results: SearchResult[];
   totalHits: number;
   query: string;
+  enhancedQuery?: string;
+  facets?: Record<string, unknown>;
+  source?: 'inventory' | 'semantic' | string;
   suggestions?: string[];
 }
 
 export interface SearchResult {
   productId: string;
+  sku?: string;
   name: string;
   description: string;
   brand: string;
+  categoryId?: string;
   price: number;
+  regularPrice?: number;
+  salePrice?: number | null;
+  imageUrl?: string | null;
+  inStock?: boolean;
   score: number;
+  reason?: string;
   highlights?: Record<string, string[]>;
 }

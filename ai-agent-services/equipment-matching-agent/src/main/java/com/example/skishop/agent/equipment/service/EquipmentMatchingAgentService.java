@@ -3,20 +3,20 @@ package com.example.skishop.agent.equipment.service;
 import com.example.skishop.agent.common.dto.EquipmentMatchRequest;
 import com.example.skishop.agent.common.dto.EquipmentMatchResult;
 import com.example.skishop.agent.common.dto.ProductCandidate;
+import com.example.skishop.agent.common.dto.RankedProduct;
 import com.example.skishop.agent.equipment.tool.EquipmentMatchingToolService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Random;
-import java.util.concurrent.CompletableFuture;
+import java.util.Set;
 
 public class EquipmentMatchingAgentService {
 
@@ -62,12 +62,16 @@ public class EquipmentMatchingAgentService {
 
     private final ChatClient chatClient;
     private final EquipmentMatchingToolService toolService;
+    private final RecommendationCandidateService candidateService;
+    private final RecommendationScoringService scoringService;
 
     public EquipmentMatchingAgentService(
             @Qualifier("equipmentAgentChatClient") ChatClient chatClient,
             EquipmentMatchingToolService toolService) {
         this.chatClient = chatClient;
         this.toolService = toolService;
+        this.candidateService = new RecommendationCandidateService(toolService);
+        this.scoringService = new RecommendationScoringService();
     }
 
     public EquipmentMatchResult match(EquipmentMatchRequest request) {
@@ -77,27 +81,30 @@ public class EquipmentMatchingAgentService {
         // 予算は複数カテゴリの合計に対する上限のため、カテゴリ単位の検索では適用しない。
         // 個別カテゴリの最低価格より総予算が小さいケースで結果が空になるのを避ける目的。
         // 総予算超過のチェックは LLM の rankProducts ステップで行う。
-        List<CompletableFuture<List<ProductCandidate>>> futures = request.desiredCategories().stream()
-                .map(category -> CompletableFuture.supplyAsync(() ->
-                        toolService.searchInventoryCandidates(category, request.skillLevel(), null)))
-                .toList();
-
-        List<ProductCandidate> allCandidates = new ArrayList<>();
-        futures.forEach(f -> allCandidates.addAll(f.join()));
-
+        List<ProductCandidate> allCandidates = candidateService.generateCandidates(request);
         log.info("EquipmentMatchingAgent: {} candidates found", allCandidates.size());
 
         // 行き先・スキルレベル・ユーザに応じた事前ランキング（多様性確保）
         // LLM へ渡す候補は上位 30 件に制限（reasoning model のタイムアウト防止）
-        List<ProductCandidate> ranked = preRank(allCandidates, request).stream().limit(30).toList();
+        List<ProductCandidate> ranked = scoringService.scoreAndRank(allCandidates, request).stream().limit(30).toList();
         log.info("EquipmentMatchingAgent: {} candidates after preRank+limit", ranked.size());
 
-        return chatClient.prompt()
-                .system(SYSTEM_PROMPT)
-                .user(buildUserPrompt(request, ranked))
-                .tools(toolService)
-                .call()
-                .entity(EquipmentMatchResult.class);
+        try {
+            EquipmentMatchResult result = chatClient.prompt()
+                    .system(SYSTEM_PROMPT)
+                    .user(buildUserPrompt(request, ranked))
+                    .tools(toolService)
+                    .call()
+                    .entity(EquipmentMatchResult.class);
+            if (result != null) {
+                return sanitizeResult(result, request, ranked);
+            }
+            log.warn("EquipmentMatchingAgent returned null result, using deterministic fallback");
+        } catch (RuntimeException ex) {
+            log.warn("EquipmentMatchingAgent LLM call failed, using deterministic fallback: {}", ex.getMessage());
+        }
+
+        return deterministicFallback(request, ranked);
     }
 
     /**
@@ -109,20 +116,7 @@ public class EquipmentMatchingAgentService {
      * 同条件の連続実行では同じ結果（再現性 ✅）、別 destination/skillLevel では別商品（変化 ✅）。
      */
     static List<ProductCandidate> preRank(List<ProductCandidate> candidates, EquipmentMatchRequest request) {
-        if (candidates == null || candidates.isEmpty()) return List.of();
-        String terrain = terrainOf(request.destination());
-        long seed = diversitySeed(request);
-        Random rng = new Random(seed);
-        // 商品ごとに決定論的なジッタを生成し Map に保持（毎回同じ）
-        Map<String, Double> jitter = new java.util.HashMap<>();
-        for (ProductCandidate c : candidates) {
-            jitter.put(c.productId(), (rng.nextDouble() - 0.5) * 6.0); // -3.0 〜 +3.0
-        }
-        return candidates.stream()
-                .sorted(Comparator
-                        .comparingDouble((ProductCandidate c) -> totalScore(c, request.skillLevel(), terrain, jitter.get(c.productId())))
-                        .reversed())
-                .toList();
+        return new RecommendationScoringService().scoreAndRank(candidates, request);
     }
 
     static double totalScore(ProductCandidate c, String skillLevel, String terrain, Double jitter) {
@@ -160,6 +154,90 @@ public class EquipmentMatchingAgentService {
 
     static String nullToEmpty(String s) {
         return s == null ? "" : s;
+    }
+
+    private EquipmentMatchResult deterministicFallback(EquipmentMatchRequest request, List<ProductCandidate> ranked) {
+        var body = request.bodyMeasurements();
+        List<ProductCandidate> sizeCompatible = toolService.filterByBodyMeasurements(
+                ranked,
+                body == null ? null : body.heightCm(),
+                body == null ? null : body.weightKg(),
+                body == null || body.footSizeCm() == null ? null : body.footSizeCm().doubleValue());
+
+        List<RankedProduct> recommendations = toolService.rankProducts(
+                sizeCompatible,
+                request.skillLevel(),
+                request.budgetYen());
+        BigDecimal total = recommendations.stream()
+                .map(RankedProduct::estimatedPrice)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        boolean withinBudget = request.budgetYen() == null
+                || total.compareTo(BigDecimal.valueOf(request.budgetYen())) <= 0;
+
+        String summary = recommendations.isEmpty()
+                ? "在庫・販売状態を満たす商品候補が見つかりませんでした。条件を広げて再検索してください。"
+                : "LLM 推薦理由の生成に失敗したため、在庫候補と決定論的スコアリングに基づくランキングを返しています。";
+
+        return new EquipmentMatchResult(
+                request.userId(),
+                recommendations,
+                summary,
+                total.doubleValue(),
+                withinBudget,
+                Instant.now());
+    }
+
+    private EquipmentMatchResult sanitizeResult(EquipmentMatchResult result,
+                                                EquipmentMatchRequest request,
+                                                List<ProductCandidate> ranked) {
+        Set<String> allowedProductIds = ranked.stream()
+                .map(ProductCandidate::productId)
+                .collect(java.util.stream.Collectors.toSet());
+        List<RankedProduct> sourceRecommendations = result.recommendations() == null
+                ? List.of()
+                : result.recommendations();
+        List<RankedProduct> validRecommendations = sourceRecommendations.stream()
+                .filter(r -> r.product() != null)
+                .filter(r -> allowedProductIds.contains(r.product().productId()))
+                .filter(r -> r.product().isAvailable())
+                .toList();
+
+        if (validRecommendations.size() == sourceRecommendations.size()) {
+            return result;
+        }
+        if (validRecommendations.isEmpty()) {
+            log.warn("EquipmentMatchingAgent LLM result contained no valid inventory products, using deterministic fallback");
+            return deterministicFallback(request, ranked);
+        }
+
+        java.util.concurrent.atomic.AtomicInteger rankCounter = new java.util.concurrent.atomic.AtomicInteger(1);
+        List<RankedProduct> reRanked = validRecommendations.stream()
+                .map(r -> new RankedProduct(
+                        rankCounter.getAndIncrement(),
+                        r.product(),
+                        r.matchScore(),
+                        r.matchReason(),
+                        r.estimatedPrice(),
+                        r.isWeatherOptimal()))
+                .toList();
+        BigDecimal total = reRanked.stream()
+                .map(RankedProduct::estimatedPrice)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        boolean withinBudget = request.budgetYen() == null
+                || total.compareTo(BigDecimal.valueOf(request.budgetYen())) <= 0;
+
+        String summary = result.aiRecommendationSummary() == null
+                ? "在庫候補外の商品を除外して推薦を返しています。"
+                : result.aiRecommendationSummary() + " 在庫候補外の商品は除外済みです。";
+        return new EquipmentMatchResult(
+                result.userId() == null ? request.userId() : result.userId(),
+                reRanked,
+                summary,
+                total.doubleValue(),
+                withinBudget,
+                result.generatedAt() == null ? Instant.now() : result.generatedAt());
     }
 
     static String buildUserPrompt(EquipmentMatchRequest request, List<ProductCandidate> candidates) {

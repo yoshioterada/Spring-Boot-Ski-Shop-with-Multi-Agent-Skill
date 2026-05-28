@@ -73,6 +73,11 @@
             <artifactId>spring-data-commons</artifactId>
             <optional>true</optional>
         </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <optional>true</optional>
+        </dependency>
     </dependencies>
 
     <!-- common-lib should NOT use spring-boot-maven-plugin (it's not a boot app) -->

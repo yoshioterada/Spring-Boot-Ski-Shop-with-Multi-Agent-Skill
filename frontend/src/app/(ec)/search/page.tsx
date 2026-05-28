@@ -3,7 +3,7 @@
 import { Search, ThumbsDown, ThumbsUp } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useDeferredValue, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 
 import { SkeletonCard } from '@/components/common/skeleton-card';
 import { ProductCard } from '@/components/ec/product-card';
@@ -19,7 +19,6 @@ function SearchContent() {
   const searchParams = useSearchParams();
   const query = searchParams.get('q') || '';
   const [results, setResults] = useState<ProductResponse[]>([]);
-  const deferredResults = useDeferredValue(results);
   const [totalHits, setTotalHits] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState(query);
@@ -39,16 +38,16 @@ function SearchContent() {
         const data: SearchResponse = await res.json();
         const products: ProductResponse[] = (data.results || []).map((r, i) => ({
           id: r.productId,
-          sku: `SKU-${String(i)}`,
+          sku: r.sku ?? `SKU-${String(i)}`,
           name: r.name,
           description: r.description,
           brand: r.brand,
-          categoryId: '',
-          regularPrice: r.price,
-          salePrice: null,
+          categoryId: r.categoryId ?? '',
+          regularPrice: r.regularPrice ?? r.price,
+          salePrice: r.salePrice ?? null,
           currency: 'JPY',
-          stockQuantity: 10,
-          availableQuantity: 10,
+          stockQuantity: r.inStock === false ? 0 : 1,
+          availableQuantity: r.inStock === false ? 0 : 1,
           status: 'ACTIVE' as const,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),

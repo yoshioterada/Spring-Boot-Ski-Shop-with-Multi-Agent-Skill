@@ -4,9 +4,11 @@ import com.example.skishop.common.event.EventPublisher;
 import com.example.skishop.common.exception.AuthorizationDeniedException;
 import com.example.skishop.common.exception.BusinessRuleViolationException;
 import com.example.skishop.common.exception.ResourceNotFoundException;
+import com.example.skishop.sales.client.InventoryClient;
 import com.example.skishop.sales.dto.*;
 import com.example.skishop.sales.dto.CreateOrderRequest.OrderItemRequest;
 import com.example.skishop.sales.model.Order;
+import com.example.skishop.sales.model.OrderItem;
 import com.example.skishop.sales.model.ReturnRequest;
 import com.example.skishop.sales.model.Shipment;
 import com.example.skishop.sales.repository.OrderRepository;
@@ -36,8 +38,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class OrderServiceTest {
@@ -45,13 +46,14 @@ class OrderServiceTest {
     @Mock private OrderRepository orderRepository;
     @Mock private ShipmentRepository shipmentRepository;
     @Mock private ReturnRequestRepository returnRequestRepository;
+    @Mock private InventoryClient inventoryClient;
     @Mock private EventPublisher eventPublisher;
 
     private OrderService orderService;
 
     @BeforeEach
     void setUp() {
-        orderService = new OrderService(orderRepository, shipmentRepository, returnRequestRepository, eventPublisher);
+        orderService = new OrderService(orderRepository, shipmentRepository, returnRequestRepository, inventoryClient, eventPublisher);
     }
 
     @AfterEach
@@ -202,6 +204,93 @@ class OrderServiceTest {
             assertThatThrownBy(() -> orderService.updateOrderStatus(orderId, "CONFIRMED"))
                     .isInstanceOf(BusinessRuleViolationException.class)
                     .hasMessageContaining("変更はできません");
+        }
+    }
+
+    @Nested
+    @DisplayName("支払い状態連携")
+    class PaymentStatusIntegration {
+
+        @Test
+        @DisplayName("決済失敗時に注文をFAILEDにして注文明細分の在庫予約を解放する")
+        void should_markPaymentFailedAndReleaseInventory_when_paymentFailed() {
+            // Arrange
+            UUID orderId = UUID.randomUUID();
+            UUID paymentId = UUID.randomUUID();
+            var order = createTestOrder();
+            order.addItem(new OrderItem("prod-1", "Ski", "SKU-001", 2, BigDecimal.valueOf(1000)));
+            order.addItem(new OrderItem("prod-2", "Boots", "SKU-002", 1, BigDecimal.valueOf(2000)));
+            when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+            when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // Act
+            OrderResponse response = orderService.markPaymentFailed(orderId, paymentId);
+
+            // Assert
+            assertThat(response.paymentStatus()).isEqualTo("FAILED");
+            verify(inventoryClient).releaseReservation("SKU-001", 2, orderId.toString(), "PAYMENT_FAILED");
+            verify(inventoryClient).releaseReservation("SKU-002", 1, orderId.toString(), "PAYMENT_FAILED");
+            verify(eventPublisher).publish(any());
+        }
+
+        @Test
+        @DisplayName("同一SKUの注文明細は集約して在庫予約を解放する")
+        void should_aggregateReleaseQuantity_when_itemsShareSku() {
+            // Arrange
+            UUID orderId = UUID.randomUUID();
+            UUID paymentId = UUID.randomUUID();
+            var order = createTestOrder();
+            order.addItem(new OrderItem("prod-1", "Ski A", "SKU-001", 2, BigDecimal.valueOf(1000)));
+            order.addItem(new OrderItem("prod-1", "Ski B", "SKU-001", 3, BigDecimal.valueOf(1000)));
+            when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+            when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // Act
+            orderService.markPaymentFailed(orderId, paymentId);
+
+            // Assert
+            verify(inventoryClient).releaseReservation("SKU-001", 5, orderId.toString(), "PAYMENT_FAILED");
+        }
+
+        @Test
+        @DisplayName("既に決済失敗済みの注文では在庫予約を再解放しない")
+        void should_skipInventoryRelease_when_paymentAlreadyFailed() {
+            // Arrange
+            UUID orderId = UUID.randomUUID();
+            UUID paymentId = UUID.randomUUID();
+            var order = createTestOrder();
+            order.addItem(new OrderItem("prod-1", "Ski", "SKU-001", 2, BigDecimal.valueOf(1000)));
+            order.setPaymentStatus(Order.PaymentStatus.FAILED);
+            when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+
+            // Act
+            OrderResponse response = orderService.markPaymentFailed(orderId, paymentId);
+
+            // Assert
+            assertThat(response.paymentStatus()).isEqualTo("FAILED");
+            verifyNoInteractions(inventoryClient);
+            verify(orderRepository, never()).save(any(Order.class));
+        }
+
+        @Test
+        @DisplayName("在庫予約解放に失敗した場合は注文をFAILEDにせず例外を伝播する")
+        void should_propagateException_when_inventoryReleaseFails() {
+            // Arrange
+            UUID orderId = UUID.randomUUID();
+            UUID paymentId = UUID.randomUUID();
+            var order = createTestOrder();
+            order.addItem(new OrderItem("prod-1", "Ski", "SKU-001", 2, BigDecimal.valueOf(1000)));
+            when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+            doThrow(new IllegalStateException("inventory unavailable"))
+                    .when(inventoryClient).releaseReservation("SKU-001", 2, orderId.toString(), "PAYMENT_FAILED");
+
+            // Act & Assert
+            assertThatThrownBy(() -> orderService.markPaymentFailed(orderId, paymentId))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("inventory unavailable");
+            assertThat(order.getPaymentStatus()).isEqualTo(Order.PaymentStatus.PENDING);
+            verify(orderRepository, never()).save(any(Order.class));
+            verify(eventPublisher, never()).publish(any());
         }
     }
 

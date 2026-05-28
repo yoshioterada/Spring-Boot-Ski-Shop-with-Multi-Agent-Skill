@@ -4,7 +4,9 @@ import com.example.skishop.common.event.EventPublisher;
 import com.example.skishop.common.exception.BusinessRuleViolationException;
 import com.example.skishop.common.exception.ResourceNotFoundException;
 import com.example.skishop.inventory.dto.*;
+import com.example.skishop.inventory.model.InventoryReleaseLog;
 import com.example.skishop.inventory.model.Product;
+import com.example.skishop.inventory.repository.InventoryReleaseLogRepository;
 import com.example.skishop.inventory.repository.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -32,13 +35,14 @@ import static org.mockito.Mockito.*;
 class ProductServiceTest {
 
     @Mock private ProductRepository productRepository;
+    @Mock private InventoryReleaseLogRepository inventoryReleaseLogRepository;
     @Mock private EventPublisher eventPublisher;
 
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository, eventPublisher);
+        productService = new ProductService(productRepository, inventoryReleaseLogRepository, eventPublisher);
     }
 
     @Nested
@@ -180,6 +184,76 @@ class ProductServiceTest {
             assertThatThrownBy(() -> productService.releaseStock(new ReleaseStockRequest("prod-1", 10, "order-1")))
                     .isInstanceOf(BusinessRuleViolationException.class)
                     .hasMessageContaining("予約数量");
+        }
+
+        @Test
+        @DisplayName("内部SKU指定の在庫予約解放が成功する")
+        void should_releaseStockBySku_when_referenceIsNew() {
+            // Arrange
+            var product = new Product("SKI-001", "Test Product", "Brand", "cat-1");
+            product.setStockQuantity(100);
+            product.setReservedQuantity(30);
+            when(productRepository.findBySku("SKI-001")).thenReturn(Optional.of(product));
+            when(inventoryReleaseLogRepository.existsByReferenceIdAndSkuAndReason(
+                "order-1", "SKI-001", "PAYMENT_FAILED")).thenReturn(false);
+            when(inventoryReleaseLogRepository.save(any(InventoryReleaseLog.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // Act
+            ProductResponse response = productService.releaseStockBySku(
+                new InternalReleaseStockRequest("SKI-001", 10, "PAYMENT_FAILED", "order-1"));
+
+            // Assert
+            assertThat(response.availableQuantity()).isEqualTo(80);
+            assertThat(product.getReservedQuantity()).isEqualTo(20);
+            verify(inventoryReleaseLogRepository).save(any(InventoryReleaseLog.class));
+            verify(eventPublisher).publish(any());
+        }
+
+        @Test
+        @DisplayName("同一参照IDとSKUの内部解放は二重に予約数を減らさない")
+        void should_skipReleaseBySku_when_referenceAlreadyReleased() {
+            // Arrange
+            var product = new Product("SKI-001", "Test Product", "Brand", "cat-1");
+            product.setStockQuantity(100);
+            product.setReservedQuantity(30);
+            when(productRepository.findBySku("SKI-001")).thenReturn(Optional.of(product));
+            when(inventoryReleaseLogRepository.existsByReferenceIdAndSkuAndReason(
+                "order-1", "SKI-001", "PAYMENT_FAILED")).thenReturn(true);
+
+            // Act
+            ProductResponse response = productService.releaseStockBySku(
+                new InternalReleaseStockRequest("SKI-001", 10, "PAYMENT_FAILED", "order-1"));
+
+            // Assert
+            assertThat(response.availableQuantity()).isEqualTo(70);
+            assertThat(product.getReservedQuantity()).isEqualTo(30);
+            verify(productRepository, never()).save(any(Product.class));
+            verify(eventPublisher, never()).publish(any());
+        }
+
+        @Test
+        @DisplayName("同時実行で解放ログが重複した場合は予約数を減らさない")
+        void should_skipReleaseBySku_when_releaseLogDuplicateDetected() {
+            // Arrange
+            var product = new Product("SKI-001", "Test Product", "Brand", "cat-1");
+            product.setStockQuantity(100);
+            product.setReservedQuantity(30);
+            when(productRepository.findBySku("SKI-001")).thenReturn(Optional.of(product));
+            when(inventoryReleaseLogRepository.existsByReferenceIdAndSkuAndReason(
+                "order-1", "SKI-001", "PAYMENT_FAILED")).thenReturn(false);
+            when(inventoryReleaseLogRepository.save(any(InventoryReleaseLog.class)))
+                .thenThrow(new DuplicateKeyException("duplicate"));
+
+            // Act
+            ProductResponse response = productService.releaseStockBySku(
+                new InternalReleaseStockRequest("SKI-001", 10, "PAYMENT_FAILED", "order-1"));
+
+            // Assert
+            assertThat(response.availableQuantity()).isEqualTo(70);
+            assertThat(product.getReservedQuantity()).isEqualTo(30);
+            verify(productRepository, never()).save(any(Product.class));
+            verify(eventPublisher, never()).publish(any());
         }
     }
 

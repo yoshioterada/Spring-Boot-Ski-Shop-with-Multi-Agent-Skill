@@ -70,12 +70,17 @@ public class ProductController {
     }
 
     @GetMapping("/products/search")
-    public ResponseEntity<Page<ProductResponse>> searchProducts(@RequestParam String q, @PageableDefault(size = 20) Pageable pageable) {
+    public ResponseEntity<Page<ProductResponse>> searchProducts(
+            @RequestParam String q,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String enhancedQuery,
+            @RequestParam(defaultValue = "inventory-product-search") String source,
+            @PageableDefault(size = 20) Pageable pageable) {
         long start = System.nanoTime();
-        Page<ProductResponse> result = productService.searchProducts(q, pageable);
+        Page<ProductResponse> result = productService.searchProducts(q, category, pageable);
         long durationMs = (System.nanoTime() - start) / 1_000_000L;
         // 検索ログを非同期で記録 (失敗しても応答を妨げない)
-        searchAnalyticsService.logSearchAsync(q, result.getTotalElements(), durationMs);
+        searchAnalyticsService.logSearchAsync(q, enhancedQuery, source, result.getTotalElements(), durationMs);
         return ResponseEntity.ok(result);
     }
 

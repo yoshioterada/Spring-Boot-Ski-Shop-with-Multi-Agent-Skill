@@ -39,7 +39,8 @@ public class UserManagementClient {
     }
 
     public static UserProfile fallback(String userId) {
-        return new UserProfile(userId, userId, "BRONZE", List.of(), "BEGINNER", 0);
+        return new UserProfile(userId, userId, "BRONZE", List.of(), "BEGINNER", 0, List.of(),
+                List.of("user-management-service unavailable: fallback profile used"));
     }
 
     public record UserProfile(
@@ -48,6 +49,18 @@ public class UserManagementClient {
             String customerTier,
             List<String> purchasedCategories,
             String preferredSkillLevel,
-            Integer pointBalance
+            Integer pointBalance,
+            List<CouponSummary> availableCoupons,
+            List<String> warnings
+    ) {}
+
+    public record CouponSummary(
+            String couponId,
+            String couponCode,
+            String couponType,
+            String discountType,
+            String discountValue,
+            String minimumAmount,
+            String expiresAt
     ) {}
 }

@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * inventory-management-service との通信クライアント。
@@ -98,7 +99,23 @@ public class InventoryClient {
         }
     }
 
+    public void releaseReservation(String sku, int quantity, String referenceId, String reason) {
+        try {
+            restClient.post()
+                    .uri("/api/v1/internal/inventory/release")
+                    .contentType(Objects.requireNonNull(MediaType.APPLICATION_JSON))
+                    .body(new ReleaseReservationRequest(sku, quantity, reason, referenceId))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException ex) {
+            throw new IllegalStateException(
+                    "Failed to release inventory reservation for sku " + sku + " and reference " + referenceId, ex);
+        }
+    }
+
     public record ProductSummary(String sku, String name, String categoryId) {}
+
+    public record ReleaseReservationRequest(String sku, int quantity, String reason, String referenceId) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ProductBatchResponse(String id, String sku, String name, String categoryId) {}

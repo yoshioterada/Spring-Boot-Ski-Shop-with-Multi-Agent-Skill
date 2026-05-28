@@ -1,4 +1,3 @@
-import { Inter, Noto_Sans_JP } from 'next/font/google';
 import { getServerSession } from 'next-auth';
 
 import './globals.css';
@@ -6,19 +5,6 @@ import { authOptions } from '@/lib/auth-options';
 import { Providers } from './providers';
 
 import type { Metadata } from 'next';
-
-const inter = Inter({
-  variable: '--font-sans',
-  subsets: ['latin'],
-  display: 'swap',
-});
-
-const notoSansJP = Noto_Sans_JP({
-  variable: '--font-heading',
-  subsets: ['latin'],
-  display: 'swap',
-  weight: ['400', '500', '700'],
-});
 
 export const metadata: Metadata = {
   title: {
@@ -50,11 +36,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html
-      lang="ja"
-      className={`${inter.variable} ${notoSansJP.variable} h-full antialiased`}
-      suppressHydrationWarning
-    >
+    <html lang="ja" className="h-full antialiased" suppressHydrationWarning>
       <body className="flex min-h-full flex-col font-sans">
         <Providers session={session}>{children}</Providers>
       </body>

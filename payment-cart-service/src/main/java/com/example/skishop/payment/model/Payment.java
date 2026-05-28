@@ -22,6 +22,9 @@ public class Payment {
     @Column(name = "payment_intent_id", unique = true, length = 100)
     private String paymentIntentId;
 
+    @Column(name = "gateway_payment_id", length = 150)
+    private String gatewayPaymentId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private PaymentStatus status = PaymentStatus.PENDING;
@@ -38,6 +41,12 @@ public class Payment {
     @Column(name = "gateway_response", columnDefinition = "TEXT")
     private String gatewayResponse;
 
+    @Column(name = "raw_gateway_status", length = 100)
+    private String rawGatewayStatus;
+
+    @Column(name = "failure_code", length = 100)
+    private String failureCode;
+
     @Column(name = "failure_reason", length = 500)
     private String failureReason;
 
@@ -46,6 +55,15 @@ public class Payment {
 
     @Column(name = "completed_at")
     private Instant completedAt;
+
+    @Column(name = "authorized_at")
+    private Instant authorizedAt;
+
+    @Column(name = "captured_at")
+    private Instant capturedAt;
+
+    @Column(name = "failed_at")
+    private Instant failedAt;
 
     @Column(name = "gateway_provider", length = 50)
     private String gatewayProvider;
@@ -83,28 +101,41 @@ public class Payment {
     public UUID getUserId() { return userId; }
     public UUID getOrderId() { return orderId; }
     public String getPaymentIntentId() { return paymentIntentId; }
+    public String getGatewayPaymentId() { return gatewayPaymentId; }
     public PaymentStatus getStatus() { return status; }
     public BigDecimal getAmount() { return amount; }
     public String getCurrency() { return currency; }
     public String getPaymentMethod() { return paymentMethod; }
     public String getGatewayResponse() { return gatewayResponse; }
+    public String getRawGatewayStatus() { return rawGatewayStatus; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 
     public String getFailureReason() { return failureReason; }
+    public String getFailureCode() { return failureCode; }
     public BigDecimal getRefundedAmount() { return refundedAmount; }
     public Instant getCompletedAt() { return completedAt; }
+    public Instant getAuthorizedAt() { return authorizedAt; }
+    public Instant getCapturedAt() { return capturedAt; }
+    public Instant getFailedAt() { return failedAt; }
     public String getGatewayProvider() { return gatewayProvider; }
 
     public void setOrderId(UUID orderId) { this.orderId = orderId; }
+    public void setPaymentIntentId(String paymentIntentId) { this.paymentIntentId = paymentIntentId; }
+    public void setGatewayPaymentId(String gatewayPaymentId) { this.gatewayPaymentId = gatewayPaymentId; }
     public void setStatus(PaymentStatus status) { this.status = status; }
     public void setGatewayResponse(String gatewayResponse) { this.gatewayResponse = gatewayResponse; }
+    public void setRawGatewayStatus(String rawGatewayStatus) { this.rawGatewayStatus = rawGatewayStatus; }
+    public void setFailureCode(String failureCode) { this.failureCode = failureCode; }
     public void setFailureReason(String failureReason) { this.failureReason = failureReason; }
     public void setRefundedAmount(BigDecimal refundedAmount) { this.refundedAmount = refundedAmount; }
     public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }
+    public void setAuthorizedAt(Instant authorizedAt) { this.authorizedAt = authorizedAt; }
+    public void setCapturedAt(Instant capturedAt) { this.capturedAt = capturedAt; }
+    public void setFailedAt(Instant failedAt) { this.failedAt = failedAt; }
     public void setGatewayProvider(String gatewayProvider) { this.gatewayProvider = gatewayProvider; }
 
     public enum PaymentStatus {
-        PENDING, AUTHORIZED, CAPTURED, FAILED, REFUNDED
+        PENDING, REQUIRES_ACTION, AUTHORIZED, CAPTURED, FAILED, CANCELLED, PARTIALLY_REFUNDED, REFUNDED
     }
 }

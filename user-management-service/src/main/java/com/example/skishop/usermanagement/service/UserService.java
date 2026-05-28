@@ -4,6 +4,9 @@ import com.example.skishop.common.event.DomainEvent;
 import com.example.skishop.common.event.EventPublisher;
 import com.example.skishop.common.exception.BusinessRuleViolationException;
 import com.example.skishop.common.exception.ResourceNotFoundException;
+import com.example.skishop.usermanagement.client.CouponSummaryClient;
+import com.example.skishop.usermanagement.client.PointSummaryClient;
+import com.example.skishop.usermanagement.client.SalesSummaryClient;
 import com.example.skishop.usermanagement.dto.*;
 import com.example.skishop.usermanagement.model.RoleEntity;
 import com.example.skishop.usermanagement.model.UserActivity;
@@ -24,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,6 +43,9 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final EventPublisher eventPublisher;
     private final VerificationTokenRepository verificationTokenRepository;
+    private final PointSummaryClient pointSummaryClient;
+    private final SalesSummaryClient salesSummaryClient;
+    private final CouponSummaryClient couponSummaryClient;
 
     public UserService(UserProfileRepository userProfileRepository,
                        RoleEntityRepository roleEntityRepository,
@@ -46,7 +53,10 @@ public class UserService {
                        UserActivityRepository userActivityRepository,
                        PasswordEncoder passwordEncoder,
                        EventPublisher eventPublisher,
-                       VerificationTokenRepository verificationTokenRepository) {
+                       VerificationTokenRepository verificationTokenRepository,
+                       PointSummaryClient pointSummaryClient,
+                       SalesSummaryClient salesSummaryClient,
+                       CouponSummaryClient couponSummaryClient) {
         this.userProfileRepository = userProfileRepository;
         this.roleEntityRepository = roleEntityRepository;
         this.userPreferenceRepository = userPreferenceRepository;
@@ -54,6 +64,9 @@ public class UserService {
         this.passwordEncoder = passwordEncoder;
         this.eventPublisher = eventPublisher;
         this.verificationTokenRepository = verificationTokenRepository;
+        this.pointSummaryClient = pointSummaryClient;
+        this.salesSummaryClient = salesSummaryClient;
+        this.couponSummaryClient = couponSummaryClient;
     }
 
     @Transactional
@@ -93,12 +106,8 @@ public class UserService {
         return toResponse(user);
     }
 
-    /**
-     * Multi-Agent Orchestrator 向けの拡張プロファイル取得。
-     * customerTier / pointBalance は他サービス連携が未統合のため暫定スタブ値を返す。
-     */
     @Transactional(readOnly = true)
-    public com.example.skishop.usermanagement.dto.UserProfileResponse getUserProfile(UUID userId) {
+    public UserProfileResponse getUserProfile(UUID userId) {
         UserProfile user = findUserOrThrow(userId);
         String displayName = ((user.getFirstName() == null ? "" : user.getFirstName()) + " "
                 + (user.getLastName() == null ? "" : user.getLastName())).trim();
@@ -109,13 +118,53 @@ public class UserService {
                 .findByUserIdAndPrefKey(userId, "preferred_skill_level")
                 .map(p -> p.getPrefValue())
                 .orElse("INTERMEDIATE");
-        return new com.example.skishop.usermanagement.dto.UserProfileResponse(
+
+        List<String> warnings = new ArrayList<>();
+        String customerTier = "BRONZE";
+        long pointBalance = 0L;
+        try {
+            var pointSummary = pointSummaryClient.getSummary(userId).orElse(null);
+            if (pointSummary != null) {
+                customerTier = pointSummary.tierLevel() == null ? customerTier : pointSummary.tierLevel();
+                pointBalance = pointSummary.pointBalance();
+            } else {
+                warnings.add("point-service returned no profile summary");
+            }
+        } catch (RuntimeException e) {
+            log.warn("Point summary unavailable for user {}: {}", userId, e.getMessage());
+            warnings.add("point-service unavailable: fallback tier/pointBalance used");
+        }
+
+        List<String> purchasedCategories = List.of();
+        try {
+            var salesSummary = salesSummaryClient.getSummary(userId).orElse(null);
+            if (salesSummary != null && salesSummary.purchasedCategories() != null) {
+                purchasedCategories = salesSummary.purchasedCategories();
+            } else {
+                warnings.add("sales-management-service returned no purchase summary");
+            }
+        } catch (RuntimeException e) {
+            log.warn("Sales summary unavailable for user {}: {}", userId, e.getMessage());
+            warnings.add("sales-management-service unavailable: purchasedCategories fallback used");
+        }
+
+        List<CouponSummary> availableCoupons = List.of();
+        try {
+            availableCoupons = couponSummaryClient.getAvailableCoupons(userId).orElse(List.of());
+        } catch (RuntimeException e) {
+            log.warn("Coupon summary unavailable for user {}: {}", userId, e.getMessage());
+            warnings.add("coupon-service unavailable: availableCoupons fallback used");
+        }
+
+        return new UserProfileResponse(
                 userId,
                 displayName,
-                "STANDARD",
-                java.util.List.of(),
+                customerTier,
+                purchasedCategories,
                 skillLevel,
-                0L);
+                pointBalance,
+                availableCoupons,
+                warnings);
     }
 
     @Transactional

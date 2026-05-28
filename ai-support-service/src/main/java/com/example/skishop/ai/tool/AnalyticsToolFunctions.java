@@ -1,6 +1,11 @@
 package com.example.skishop.ai.tool;
 
 import com.example.skishop.ai.dto.ToolResults.*;
+import com.example.skishop.ai.dto.DataAvailability;
+import com.example.skishop.ai.dto.DeadStockResponse;
+import com.example.skishop.ai.dto.ZeroHitOpportunityResponse;
+import com.example.skishop.ai.service.DeadStockService;
+import com.example.skishop.ai.service.ZeroHitOpportunityService;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import jakarta.validation.constraints.Max;
@@ -10,11 +15,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -30,22 +37,24 @@ public class AnalyticsToolFunctions {
     private static final Logger log = LoggerFactory.getLogger(AnalyticsToolFunctions.class);
 
     private final WebClient salesWebClient;
-    private final WebClient userWebClient;
     private final WebClient inventoryWebClient;
-    private final WebClient couponWebClient;
     private final WebClient weatherWebClient;
+    private final DeadStockService deadStockService;
+    private final ZeroHitOpportunityService zeroHitOpportunityService;
 
     public AnalyticsToolFunctions(
             @Qualifier("salesWebClient") WebClient salesWebClient,
             @Qualifier("userWebClient") WebClient userWebClient,
             @Qualifier("inventoryWebClient") WebClient inventoryWebClient,
             @Qualifier("couponWebClient") WebClient couponWebClient,
-            @Qualifier("weatherWebClient") WebClient weatherWebClient) {
+            @Qualifier("weatherWebClient") WebClient weatherWebClient,
+            DeadStockService deadStockService,
+            ZeroHitOpportunityService zeroHitOpportunityService) {
         this.salesWebClient = salesWebClient;
-        this.userWebClient = userWebClient;
         this.inventoryWebClient = inventoryWebClient;
-        this.couponWebClient = couponWebClient;
         this.weatherWebClient = weatherWebClient;
+        this.deadStockService = deadStockService;
+        this.zeroHitOpportunityService = zeroHitOpportunityService;
     }
 
     // ── P2 Tools (8 種) ──────────────────────────────────────
@@ -112,13 +121,28 @@ public class AnalyticsToolFunctions {
     public InventoryLevelsResult getInventoryLevels(
             @ToolParam(description = "カテゴリ ID（任意）") @Nullable String category) {
         logToolCall("getInventoryLevels", category);
-        fetchInventoryMap("/api/v1/inventory", Map.of("category", Objects.toString(category, ""), "size", 100));
-        return new InventoryLevelsResult(category, List.of());
+        List<Map<String, Object>> rows = fetchInventoryList("/api/v1/inventory/all");
+        List<InventoryLevelsResult.InventoryEntry> items = rows.stream()
+                .filter(row -> category == null || category.isBlank()
+                        || Objects.equals(category, Objects.toString(row.get("categoryId"), "")))
+                .map(row -> {
+                    int stock = toInt(row, "availableQuantity", toInt(row, "stockQuantity", 0));
+                    int reorderPoint = 10;
+                    String status = stock <= 0 ? "OUT_OF_STOCK" : (stock <= reorderPoint ? "LOW_STOCK" : "AVAILABLE");
+                    return new InventoryLevelsResult.InventoryEntry(
+                            Objects.toString(row.get("sku"), ""),
+                            Objects.toString(row.get("name"), ""),
+                            stock,
+                            reorderPoint,
+                            status);
+                })
+                .toList();
+        return new InventoryLevelsResult(category, items, availabilityFrom("inventory-service", rows));
     }
 
     @SuppressWarnings("unused")
     private InventoryLevelsResult fallbackInventoryLevels(String category, Throwable t) {
-        return new InventoryLevelsResult(category, List.of());
+        return new InventoryLevelsResult(category, List.of(), DataAvailability.unavailable(List.of("inventory-service")));
     }
 
     @Tool(description = "指定 SKU の発注点と現在庫を取得する。")
@@ -127,12 +151,35 @@ public class AnalyticsToolFunctions {
     public ReorderPointsResult getReorderPoints(
             @ToolParam(description = "商品 SKU") String sku) {
         logToolCall("getReorderPoints", sku);
-        return new ReorderPointsResult(sku, "", 0, 0, 0, false, 0);
+        List<Map<String, Object>> rows = fetchInventoryList("/api/v1/inventory/all");
+        return rows.stream()
+                .filter(row -> sku.equals(Objects.toString(row.get("sku"), "")))
+                .findFirst()
+                .map(row -> {
+                    int stock = toInt(row, "availableQuantity", toInt(row, "stockQuantity", 0));
+                    int reorderPoint = 10;
+                    int safetyStock = 5;
+                    boolean needsReorder = stock <= reorderPoint;
+                    int recommendedQty = needsReorder ? Math.max(0, reorderPoint + safetyStock - stock) : 0;
+                    return new ReorderPointsResult(
+                            sku,
+                            Objects.toString(row.get("name"), ""),
+                            stock,
+                            reorderPoint,
+                            safetyStock,
+                            needsReorder,
+                            recommendedQty,
+                            availabilityFrom("inventory-service", rows));
+                })
+                .orElseGet(() -> new ReorderPointsResult(
+                        sku, "", 0, 10, 5, false, 0,
+                        rows.isEmpty() ? DataAvailability.unavailable(List.of("inventory-service")) : DataAvailability.available()));
     }
 
     @SuppressWarnings("unused")
     private ReorderPointsResult fallbackReorderPoints(String sku, Throwable t) {
-        return new ReorderPointsResult(sku, "", 0, 0, 0, false, 0);
+        return new ReorderPointsResult(sku, "", 0, 0, 0, false, 0,
+                DataAvailability.unavailable(List.of("inventory-service")));
     }
 
     @Tool(description = "今週と先週の売上を比較する。")
@@ -143,13 +190,27 @@ public class AnalyticsToolFunctions {
         logToolCall("getWeeklyComparison", thisWeekStart);
         LocalDate ws = LocalDate.parse(thisWeekStart);
         LocalDate prevWs = ws.minusWeeks(1);
-        return new WeeklyComparisonResult(ws, prevWs, 0, 0, 0, 0, 0, 0, List.of());
+        Map<String, Object> thisWeek = fetchSalesMap("/api/v1/admin/orders/analytics/summary", Map.of("days", 7));
+        Map<String, Object> prevWeek = fetchSalesMap("/api/v1/admin/orders/analytics/summary", Map.of("days", 14));
+        long thisRevenue = toLong(thisWeek, "totalRevenue");
+        long thisOrders = toLong(thisWeek, "totalOrders");
+        long fourteenDayRevenue = toLong(prevWeek, "totalRevenue");
+        long fourteenDayOrders = toLong(prevWeek, "totalOrders");
+        long prevRevenue = Math.max(0, fourteenDayRevenue - thisRevenue);
+        long prevOrders = Math.max(0, fourteenDayOrders - thisOrders);
+        DataAvailability availability = thisWeek.isEmpty()
+                ? DataAvailability.unavailable(List.of("sales-service"))
+                : DataAvailability.available();
+        return new WeeklyComparisonResult(ws, prevWs, thisRevenue, prevRevenue,
+                ratio(thisRevenue, prevRevenue), thisOrders, prevOrders, ratio(thisOrders, prevOrders),
+                extractTopChanges(thisWeek), availability);
     }
 
     @SuppressWarnings("unused")
     private WeeklyComparisonResult fallbackWeeklyComparison(String thisWeekStart, Throwable t) {
         LocalDate ws = LocalDate.parse(thisWeekStart);
-        return new WeeklyComparisonResult(ws, ws.minusWeeks(1), 0, 0, 0, 0, 0, 0, List.of());
+        return new WeeklyComparisonResult(ws, ws.minusWeeks(1), 0, 0, 0, 0, 0, 0, List.of(),
+                DataAvailability.unavailable(List.of("sales-service")));
     }
 
     @Tool(description = "過去 N か月の月次売上推移を取得する。")
@@ -270,12 +331,20 @@ public class AnalyticsToolFunctions {
             @ToolParam(description = "深刻度フィルタ: critical/warning/all") String severity,
             @ToolParam(description = "カテゴリ ID（任意）") @Nullable String category) {
         logToolCall("getDeadStock", severity, category);
-        return new DeadStockResult(severity, category, List.of());
+        DeadStockResponse response = deadStockService.getDeadStock();
+        List<DeadStockResult.DeadStockEntry> items = response.items().stream()
+            .filter(item -> category == null || category.isBlank()
+                || Objects.equals(category, Objects.toString(item.categoryId(), "")))
+            .filter(item -> severityMatches(severity, item.severity()))
+            .map(this::toToolDeadStockEntry)
+                .toList();
+        return new DeadStockResult(severity, category, items, response.availability());
     }
 
     @SuppressWarnings("unused")
     private DeadStockResult fallbackDeadStock(String severity, String category, Throwable t) {
-        return new DeadStockResult(severity, category, List.of());
+        return new DeadStockResult(severity, category, List.of(),
+                DataAvailability.unavailable(List.of("sales-service", "inventory-service")));
     }
 
     @Tool(description = "指定 SKU の販売速度（30 日/90 日）を取得する。")
@@ -284,12 +353,28 @@ public class AnalyticsToolFunctions {
     public InventoryVelocityResult getInventoryVelocity(
             @ToolParam(description = "商品 SKU") String sku) {
         logToolCall("getInventoryVelocity", sku);
-        return new InventoryVelocityResult(sku, 0, 0, 0, 0, null, 0);
+        List<Map<String, Object>> velocity = fetchSalesList("/api/v1/admin/orders/analytics/sku-velocity");
+        return velocity.stream()
+                .filter(row -> sku.equals(Objects.toString(row.get("sku"), "")))
+                .findFirst()
+                .map(row -> new InventoryVelocityResult(
+                        sku,
+                        toLong(row, "sales30"),
+                        toLong(row, "sales90"),
+                        toLong(row, "units30"),
+                        toLong(row, "units90"),
+                        toLocalDate(row.get("lastSoldAt")),
+                        toDouble(row, "avgPrice"),
+                        DataAvailability.available()))
+                .orElseGet(() -> new InventoryVelocityResult(
+                        sku, 0, 0, 0, 0, null, 0,
+                        velocity.isEmpty() ? DataAvailability.unavailable(List.of("sales-service")) : DataAvailability.available()));
     }
 
     @SuppressWarnings("unused")
     private InventoryVelocityResult fallbackInventoryVelocity(String sku, Throwable t) {
-        return new InventoryVelocityResult(sku, 0, 0, 0, 0, null, 0);
+        return new InventoryVelocityResult(sku, 0, 0, 0, 0, null, 0,
+                DataAvailability.unavailable(List.of("sales-service")));
     }
 
     @Tool(description = "ゼロヒット（検索されるが商品がない）キーワード一覧を取得する。")
@@ -299,12 +384,16 @@ public class AnalyticsToolFunctions {
             @ToolParam(description = "集計日数") @Min(1) @Max(365) int days,
             @ToolParam(description = "取得件数上限") @Min(1) @Max(100) int limit) {
         logToolCall("getZeroHitOpportunities", days, limit);
-        return new ZeroHitResult(days, limit, List.of());
+        ZeroHitOpportunityResponse response = zeroHitOpportunityService.getOpportunities(days, 1, null, limit);
+        List<ZeroHitResult.ZeroHitEntry> entries = response.opportunities().stream()
+            .map(this::toToolZeroHitEntry)
+                .toList();
+        return new ZeroHitResult(response.periodDays(), limit, entries, response.availability());
     }
 
     @SuppressWarnings("unused")
     private ZeroHitResult fallbackZeroHit(int days, int limit, Throwable t) {
-        return new ZeroHitResult(days, limit, List.of());
+        return new ZeroHitResult(days, limit, List.of(), DataAvailability.unavailable(List.of("inventory-service")));
     }
 
     @Tool(description = "商品カタログをキーワードで検索する。")
@@ -313,12 +402,17 @@ public class AnalyticsToolFunctions {
     public ProductSearchResult searchProductCatalog(
             @ToolParam(description = "検索キーワード") String keyword) {
         logToolCall("searchProductCatalog", keyword);
-        return new ProductSearchResult(keyword, 0, List.of());
+        Map<String, Object> data = fetchInventoryMap("/api/v1/products/search",
+                Map.of("q", keyword, "page", 0, "size", 20));
+        List<ProductSearchResult.ProductHit> hits = extractProductHits(data);
+        int totalHits = toIntNested(data, "page", "totalElements", hits.size());
+        return new ProductSearchResult(keyword, totalHits, hits,
+                data.isEmpty() ? DataAvailability.unavailable(List.of("inventory-service")) : DataAvailability.available());
     }
 
     @SuppressWarnings("unused")
     private ProductSearchResult fallbackProductSearch(String keyword, Throwable t) {
-        return new ProductSearchResult(keyword, 0, List.of());
+        return new ProductSearchResult(keyword, 0, List.of(), DataAvailability.unavailable(List.of("inventory-service")));
     }
 
     // ── Internal Helpers ─────────────────────────────────────
@@ -388,6 +482,123 @@ public class AnalyticsToolFunctions {
                 .toList();
     }
 
+    private List<Map<String, Object>> fetchSalesList(String path) {
+        try {
+            return salesWebClient.get()
+                    .uri(path)
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<List<Map<String, Object>>>() {})
+                    .block(Duration.ofSeconds(8));
+        } catch (Exception e) {
+            log.warn("fetchSalesList failed for {}: {}", path, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<Map<String, Object>> fetchInventoryList(String path) {
+        return fetchInventoryList(path, Map.of());
+    }
+
+    private List<Map<String, Object>> fetchInventoryList(String path, Map<String, Object> params) {
+        try {
+            return inventoryWebClient.get()
+                    .uri(uriBuilder -> {
+                        var b = uriBuilder.path(path);
+                        params.forEach((k, v) -> {
+                            if (v != null && !v.toString().isEmpty()) {
+                                b.queryParam(k, v);
+                            }
+                        });
+                        return b.build();
+                    })
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<List<Map<String, Object>>>() {})
+                    .block(Duration.ofSeconds(8));
+        } catch (Exception e) {
+            log.warn("fetchInventoryList failed for {}: {}", path, e.getMessage());
+            return List.of();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<ProductSearchResult.ProductHit> extractProductHits(Map<String, Object> data) {
+        Object raw = data.get("content");
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream()
+                .filter(Map.class::isInstance)
+                .map(e -> {
+                    Map<String, Object> row = (Map<String, Object>) e;
+                    return new ProductSearchResult.ProductHit(
+                            Objects.toString(row.get("sku"), ""),
+                            Objects.toString(row.get("name"), ""),
+                            Objects.toString(row.get("categoryId"), ""),
+                            toDouble(row, "salePrice") > 0 ? toDouble(row, "salePrice") : toDouble(row, "regularPrice"));
+                })
+                .toList();
+    }
+
+    private DeadStockResult.DeadStockEntry toToolDeadStockEntry(DeadStockResponse.DeadStockItem item) {
+        return new DeadStockResult.DeadStockEntry(
+                item.sku(),
+                item.name(),
+                item.stock(),
+                item.sales30(),
+                item.sales90(),
+                null,
+                0,
+                item.severity().name(),
+                item.daysOfSupply(),
+                item.suggestedDiscountPct(),
+                item.categoryId());
+    }
+
+    private ZeroHitResult.ZeroHitEntry toToolZeroHitEntry(ZeroHitOpportunityResponse.Opportunity opportunity) {
+        return new ZeroHitResult.ZeroHitEntry(
+                opportunity.normalizedKeyword(),
+                opportunity.searchCount(),
+                opportunity.estimatedLossJpy(),
+                opportunity.estimatedCategory(),
+                suggestedAction(opportunity),
+                opportunity.normalizedKeyword());
+    }
+
+    private static boolean severityMatches(String requestedSeverity, DeadStockResponse.Severity itemSeverity) {
+        String normalized = Objects.toString(requestedSeverity, "all").trim();
+        if (normalized.isBlank() || "all".equalsIgnoreCase(normalized)) {
+            return true;
+        }
+        if ("warning".equalsIgnoreCase(normalized)) {
+            return itemSeverity == DeadStockResponse.Severity.HIGH;
+        }
+        if ("healthy".equalsIgnoreCase(normalized)) {
+            return itemSeverity == DeadStockResponse.Severity.MEDIUM;
+        }
+        return itemSeverity.name().equalsIgnoreCase(normalized);
+    }
+
+    private static String suggestedAction(ZeroHitOpportunityResponse.Opportunity opportunity) {
+        if (opportunity.narrative() != null && !opportunity.narrative().isBlank()) {
+            return opportunity.narrative();
+        }
+        if (opportunity.priority() != null && !opportunity.priority().isBlank()) {
+            return "Review assortment priority: " + opportunity.priority();
+        }
+        return "Review assortment for " + opportunity.normalizedKeyword();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> extractTopChanges(Map<String, Object> data) {
+        Object raw = data.get("topProducts");
+        if (!(raw instanceof List<?> list)) return List.of();
+        return list.stream()
+                .filter(Map.class::isInstance)
+                .limit(5)
+                .map(e -> (Map<String, Object>) e)
+                .toList();
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> fetchSalesMap(String path, Map<String, Object> params) {
         try {
@@ -436,6 +647,48 @@ public class AnalyticsToolFunctions {
         Object val = map.get(key);
         if (val instanceof Number n) return n.longValue();
         return 0;
+    }
+
+    private static int toInt(Map<String, Object> map, String key, int defaultValue) {
+        Object val = map == null ? null : map.get(key);
+        if (val instanceof Number n) return n.intValue();
+        if (val instanceof String s) {
+            try { return Integer.parseInt(s); } catch (NumberFormatException ignored) { return defaultValue; }
+        }
+        return defaultValue;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static int toIntNested(Map<String, Object> map, String objectKey, String key, int defaultValue) {
+        Object nested = map.get(objectKey);
+        if (nested instanceof Map<?, ?> nestedMap) {
+            return toInt((Map<String, Object>) nestedMap, key, defaultValue);
+        }
+        return defaultValue;
+    }
+
+    private static LocalDate toLocalDate(Object value) {
+        if (value == null) return null;
+        if (value instanceof LocalDate date) return date;
+        if (value instanceof java.sql.Date date) return date.toLocalDate();
+        if (value instanceof java.time.LocalDateTime dateTime) return dateTime.toLocalDate();
+        if (value instanceof Instant instant) return instant.atZone(java.time.ZoneId.of("Asia/Tokyo")).toLocalDate();
+        try {
+            return LocalDate.parse(value.toString().substring(0, 10));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static double ratio(long current, long previous) {
+        if (previous == 0) return current > 0 ? 1.0 : 0.0;
+        return (double) (current - previous) / previous;
+    }
+
+    private static DataAvailability availabilityFrom(String source, Collection<?> rows) {
+        return rows == null || rows.isEmpty()
+                ? DataAvailability.unavailable(List.of(source))
+                : DataAvailability.available();
     }
 
     private void logToolCall(String toolName, Object... params) {

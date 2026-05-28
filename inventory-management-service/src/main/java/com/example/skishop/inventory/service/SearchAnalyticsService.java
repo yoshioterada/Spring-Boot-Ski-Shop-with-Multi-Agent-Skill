@@ -52,12 +52,20 @@ public class SearchAnalyticsService {
      */
     @Async
     public void logSearchAsync(String rawKeyword, long hitCount, long durationMs) {
+        logSearchAsync(rawKeyword, null, "inventory-product-search", hitCount, durationMs);
+    }
+
+    @Async
+    public void logSearchAsync(String rawKeyword, String enhancedKeyword, String source, long hitCount, long durationMs) {
         try {
             String normalized = normalize(rawKeyword);
             if (normalized.isEmpty()) {
                 return;
             }
-            repository.save(new SearchLog(normalized, hitCount, Math.max(0L, durationMs)));
+            String normalizedEnhanced = normalize(enhancedKeyword);
+            String normalizedSource = normalizeSource(source);
+            repository.save(new SearchLog(normalized, normalizedEnhanced, normalizedSource,
+                    hitCount, Math.max(0L, durationMs)));
         } catch (RuntimeException ex) {
             log.warn("Failed to persist search log for keyword={}: {}", rawKeyword, ex.getMessage());
         }
@@ -189,6 +197,11 @@ public class SearchAnalyticsService {
             trimmed = trimmed.substring(0, MAX_KEYWORD_LENGTH);
         }
         return trimmed;
+    }
+
+    private String normalizeSource(String rawSource) {
+        String normalized = normalize(rawSource);
+        return normalized.isEmpty() ? "inventory-product-search" : normalized;
     }
 
     private int clampDays(int days) {

@@ -5,6 +5,7 @@ import com.example.skishop.ai.model.ModelTraining;
 import com.example.skishop.ai.model.ModelVersion;
 import com.example.skishop.ai.repository.ModelTrainingRepository;
 import com.example.skishop.ai.repository.ModelVersionRepository;
+import com.example.skishop.common.exception.BusinessRuleViolationException;
 import com.example.skishop.common.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -42,8 +43,11 @@ class ModelManagementServiceTest {
     void should_startTraining_when_validRequest() {
         // Arrange
         ModelTrainingRequest request = new ModelTrainingRequest(
-                "RECOMMENDATION", "collaborative_filtering", Map.of("epochs", 100), List.of("price", "category"));
+            "RECOMMENDATION", "collaborative_filtering",
+            Map.of("epochs", 100, "trainingDataSize", 1200),
+            List.of("price", "category"));
         when(modelTrainingRepository.save(any(ModelTraining.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(modelVersionRepository.save(any(ModelVersion.class))).thenAnswer(inv -> inv.getArgument(0));
 
         // Act
         TrainingJobResponse response = modelManagementService.trainModel(request);
@@ -51,8 +55,14 @@ class ModelManagementServiceTest {
         // Assert
         assertThat(response.modelType()).isEqualTo("RECOMMENDATION");
         assertThat(response.algorithm()).isEqualTo("collaborative_filtering");
-        assertThat(response.status()).isEqualTo("RUNNING");
-        verify(modelTrainingRepository).save(any(ModelTraining.class));
+        assertThat(response.status()).isEqualTo("COMPLETED");
+        assertThat(response.endTime()).isNotNull();
+        assertThat(response.metrics())
+            .containsEntry("trainingDataSize", 1200L)
+            .containsKey("artifactPath")
+            .containsKey("validationScore");
+        verify(modelTrainingRepository, times(2)).save(any(ModelTraining.class));
+        verify(modelVersionRepository).save(any(ModelVersion.class));
     }
 
     @Test
@@ -102,8 +112,16 @@ class ModelManagementServiceTest {
     @DisplayName("モデルデプロイが正常に処理される")
     void should_deployModel_when_validRequest() {
         // Arrange
-        ModelVersion version = new ModelVersion("training-001", "v1.0", "/models/rec-v1");
+        ModelTraining training = new ModelTraining("RECOMMENDATION", "algo", "v1.0");
+        training.setStatus("COMPLETED");
+        ModelVersion previousVersion = new ModelVersion(training.getId(), "v0.9", "/models/rec-v0");
+        previousVersion.setActive(true);
+        ModelVersion version = new ModelVersion(training.getId(), "v1.0", "/models/rec-v1");
         when(modelVersionRepository.findById(version.getId())).thenReturn(Optional.of(version));
+        when(modelTrainingRepository.findById(training.getId())).thenReturn(Optional.of(training));
+        when(modelTrainingRepository.findByModelType("RECOMMENDATION")).thenReturn(List.of(training));
+        when(modelVersionRepository.findByModelTrainingId(training.getId()))
+                .thenReturn(List.of(previousVersion, version));
         when(modelVersionRepository.save(any(ModelVersion.class))).thenAnswer(inv -> inv.getArgument(0));
         ModelDeploymentRequest request = new ModelDeploymentRequest(version.getId(), true);
 
@@ -113,6 +131,24 @@ class ModelManagementServiceTest {
         // Assert
         assertThat(response.isActive()).isTrue();
         assertThat(response.deployedAt()).isNotNull();
+        assertThat(previousVersion.isActive()).isFalse();
+    }
+
+    @Test
+    @DisplayName("未完了トレーニングのモデルバージョンはデプロイできない")
+    void should_throwException_when_trainingIsNotCompleted() {
+        // Arrange
+        ModelTraining training = new ModelTraining("RECOMMENDATION", "algo", "v1.0");
+        training.setStatus("RUNNING");
+        ModelVersion version = new ModelVersion(training.getId(), "v1.0", "/models/rec-v1");
+        when(modelVersionRepository.findById(version.getId())).thenReturn(Optional.of(version));
+        when(modelTrainingRepository.findById(training.getId())).thenReturn(Optional.of(training));
+        ModelDeploymentRequest request = new ModelDeploymentRequest(version.getId(), true);
+
+        // Act & Assert
+        assertThatThrownBy(() -> modelManagementService.deployModel(request))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("Completed training is required");
     }
 
     @Test
@@ -130,11 +166,45 @@ class ModelManagementServiceTest {
     @Test
     @DisplayName("モデルパフォーマンスが取得される")
     void should_returnPerformance_when_requested() {
+        // Arrange
+        ModelTraining training = new ModelTraining("RECOMMENDATION", "algo", "v1.0");
+        training.setStatus("COMPLETED");
+        training.setTrainingDataSize(500L);
+        training.setValidationScore(0.81);
+        ModelVersion version = new ModelVersion(training.getId(), "v1.0", "/models/rec-v1");
+        version.setActive(true);
+        version.setPerformance(Map.of("precision", 0.77, "recall", 0.72));
+        when(modelTrainingRepository.findByModelType("RECOMMENDATION")).thenReturn(List.of(training));
+        when(modelVersionRepository.findByModelTrainingId(training.getId())).thenReturn(List.of(version));
+        when(modelTrainingRepository.findById(training.getId())).thenReturn(Optional.of(training));
+
         // Act
         ModelPerformanceResponse response = modelManagementService.getModelPerformance("RECOMMENDATION", "v1.0");
 
         // Assert
         assertThat(response.modelType()).isEqualTo("RECOMMENDATION");
         assertThat(response.version()).isEqualTo("v1.0");
+        assertThat(response.metrics())
+                .containsEntry("precision", 0.77)
+                .containsEntry("active", true)
+                .containsEntry("modelPath", "/models/rec-v1")
+                .containsEntry("trainingDataSize", 500L);
+    }
+
+    @Test
+    @DisplayName("activeモデルが存在する場合、descriptorがバージョン付きで返る")
+    void should_returnActiveModelDescriptor_when_activeVersionExists() {
+        // Arrange
+        ModelTraining training = new ModelTraining("SEARCH", "semantic_search", "v1.0");
+        ModelVersion version = new ModelVersion(training.getId(), "v1.0", "/models/search-v1");
+        version.setActive(true);
+        when(modelTrainingRepository.findByModelType("SEARCH")).thenReturn(List.of(training));
+        when(modelVersionRepository.findByModelTrainingId(training.getId())).thenReturn(List.of(version));
+
+        // Act
+        String descriptor = modelManagementService.resolveActiveModelDescriptor("SEARCH");
+
+        // Assert
+        assertThat(descriptor).isEqualTo("SEARCH:v1.0");
     }
 }

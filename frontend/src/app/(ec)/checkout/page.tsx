@@ -181,35 +181,7 @@ export default function CheckoutPage() {
     const timeout = setTimeout(() => controller.abort(), PROCESS_TIMEOUT);
 
     try {
-      // Step 1: Create payment intent
-      const intentRes = await fetch('/api/payments/intent', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Idempotency-Key': idempotencyKey,
-        },
-        body: JSON.stringify({
-          amount: total,
-          paymentMethod,
-        }),
-        signal: controller.signal,
-      });
-      if (!intentRes.ok) throw new Error('決済の準備に失敗しました');
-      const intent: PaymentResponse = await intentRes.json();
-
-      // Step 2: Process payment
-      const processRes = await fetch(`/api/payments/${intent.id}/process`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Idempotency-Key': idempotencyKey,
-        },
-        body: JSON.stringify({ paymentIntentId: intent.id }),
-        signal: controller.signal,
-      });
-      if (!processRes.ok) throw new Error('決済処理に失敗しました');
-
-      // Step 3: Create order
+      // Step 1: Create a pending order so payment events can reconcile against it.
       const orderRes = await fetch('/api/orders', {
         method: 'POST',
         headers: {
@@ -225,13 +197,43 @@ export default function CheckoutPage() {
           })),
           shippingAddress,
           paymentMethod,
-          paymentId: intent.id,
           notes: `TEL: ${shipping.phone}`,
         }),
         signal: controller.signal,
       });
       if (!orderRes.ok) throw new Error('注文の作成に失敗しました');
       const order: OrderResponse = await orderRes.json();
+
+      // Step 2: Create payment intent linked to the pending order
+      const intentRes = await fetch('/api/payments/intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify({
+          amount: total,
+          paymentMethod,
+          orderId: order.id,
+        }),
+        signal: controller.signal,
+      });
+      if (!intentRes.ok) throw new Error('決済の準備に失敗しました');
+      const intent: PaymentResponse = await intentRes.json();
+
+      // Step 3: Process payment. Webhook/Outbox will also reconcile this order asynchronously.
+      const processRes = await fetch(`/api/payments/${intent.id}/process`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify({ paymentMethodId: `pm_${paymentMethod.toLowerCase()}` }),
+        signal: controller.signal,
+      });
+      if (!processRes.ok) throw new Error('決済処理に失敗しました');
+      const payment: PaymentResponse = await processRes.json();
+      if (payment.status !== 'CAPTURED') throw new Error('決済が完了していません');
 
       clearTimeout(timeout);
       router.push(`/checkout/complete?orderId=${order.id}`);

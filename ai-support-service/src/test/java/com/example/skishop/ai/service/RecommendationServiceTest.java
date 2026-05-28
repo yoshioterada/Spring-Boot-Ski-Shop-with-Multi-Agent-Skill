@@ -1,5 +1,8 @@
 package com.example.skishop.ai.service;
 
+import com.example.skishop.ai.client.ProductCandidateClient;
+import com.example.skishop.ai.client.ProductCandidateClient.ProductCandidate;
+import com.example.skishop.ai.client.SalesRecommendationClient;
 import com.example.skishop.ai.dto.FeedbackResponse;
 import com.example.skishop.ai.dto.RecommendationFeedbackRequest;
 import com.example.skishop.ai.dto.RecommendationResponse;
@@ -23,6 +26,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,6 +39,12 @@ class RecommendationServiceTest {
 
     @Mock
     private RecommendationRepository recommendationRepository;
+    @Mock
+    private ModelManagementService modelManagementService;
+    @Mock
+    private ProductCandidateClient productCandidateClient;
+    @Mock
+    private SalesRecommendationClient salesRecommendationClient;
     @Mock
     private ChatClient.Builder chatClientBuilder;
     @Mock
@@ -49,16 +59,28 @@ class RecommendationServiceTest {
     @BeforeEach
     void setUp() {
         when(chatClientBuilder.build()).thenReturn(chatClient);
-        recommendationService = new RecommendationService(recommendationRepository, chatClientBuilder);
+        lenient().when(modelManagementService.resolveActiveModelDescriptor(anyString()))
+            .thenReturn("RECOMMENDATION:v1.0");
+        lenient().when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
+        lenient().when(requestSpec.call()).thenReturn(callResponseSpec);
+        lenient().when(callResponseSpec.content()).thenReturn("AI generated reason");
+        lenient().when(salesRecommendationClient.fetchTopProductIds(anyInt())).thenReturn(List.of());
+        recommendationService = new RecommendationService(
+            recommendationRepository, modelManagementService, productCandidateClient,
+            salesRecommendationClient, chatClientBuilder);
     }
 
     @Test
-    @DisplayName("パーソナライズされたレコメンデーションが生成される")
+    @DisplayName("inventory 候補の商品IDだけでパーソナライズ推薦が生成される")
     void should_generateRecommendations_when_validRequest() {
         // Arrange
-        when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
-        when(requestSpec.call()).thenReturn(callResponseSpec);
-        when(callResponseSpec.content()).thenReturn("recommendations");
+        when(productCandidateClient.findCandidates("ski", 30)).thenReturn(List.of(
+                candidate("inv-001", "sku-001", "ski", 12, "ACTIVE"),
+                candidate("inv-002", "sku-002", "ski", 7, "ACTIVE"),
+                candidate("inv-003", "sku-003", "ski", 0, "ACTIVE"),
+                candidate("inv-004", "sku-004", "ski", 9, "DISCONTINUED"),
+                candidate("", "sku-005", "ski", 9, "ACTIVE")
+        ));
         when(recommendationRepository.save(any(Recommendation.class))).thenAnswer(inv -> inv.getArgument(0));
 
         // Act
@@ -67,7 +89,10 @@ class RecommendationServiceTest {
         // Assert
         assertThat(response).isNotNull();
         assertThat(response.userId()).isEqualTo("user-001");
-        assertThat(response.products()).isNotEmpty();
+        assertThat(response.algorithm()).contains("RECOMMENDATION:v1.0");
+        assertThat(response.products())
+            .extracting(ProductRecommendation::getProductId)
+            .containsExactlyInAnyOrder("inv-001", "inv-002");
         verify(recommendationRepository).save(any(Recommendation.class));
     }
 
@@ -75,9 +100,10 @@ class RecommendationServiceTest {
     @DisplayName("カテゴリなしでもレコメンデーションが生成される")
     void should_generateRecommendations_when_noCategory() {
         // Arrange
-        when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
-        when(requestSpec.call()).thenReturn(callResponseSpec);
-        when(callResponseSpec.content()).thenReturn("recommendations");
+        when(productCandidateClient.findCandidates(null, 15)).thenReturn(List.of(
+            candidate("inv-001", "sku-001", "ski", 12, "ACTIVE"),
+            candidate("inv-002", "sku-002", "snowboard", 7, "ACTIVE")
+        ));
         when(recommendationRepository.save(any(Recommendation.class))).thenAnswer(inv -> inv.getArgument(0));
 
         // Act
@@ -85,7 +111,60 @@ class RecommendationServiceTest {
 
         // Assert
         assertThat(response).isNotNull();
-        assertThat(response.products()).hasSize(3);
+        assertThat(response.products()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("LLM 例外時も inventory 候補から deterministic fallback reason で推薦される")
+    void should_returnInventoryCandidates_when_llmReasonGenerationFails() {
+        // Arrange
+        when(productCandidateClient.findCandidates("ski", 6)).thenReturn(List.of(
+                candidate("inv-001", "sku-001", "ski", 12, "ACTIVE")
+        ));
+        when(chatClient.prompt(any(Prompt.class))).thenThrow(new RuntimeException("AI unavailable"));
+        when(recommendationRepository.save(any(Recommendation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        RecommendationResponse response = recommendationService.getPersonalizedRecommendations("user-001", 2, "ski");
+
+        // Assert
+        assertThat(response.products()).hasSize(1);
+        assertThat(response.products().getFirst().getProductId()).isEqualTo("inv-001");
+        assertThat(response.products().getFirst().getReason()).contains("personalized recommendation");
+    }
+
+    @Test
+    @DisplayName("LLM が空文字を返した場合も deterministic fallback reason になる")
+    void should_useFallbackReason_when_llmReturnsBlankReason() {
+        // Arrange
+        when(productCandidateClient.findCandidates("ski", 6)).thenReturn(List.of(
+                candidate("inv-001", "sku-001", "ski", 12, "ACTIVE")
+        ));
+        when(callResponseSpec.content()).thenReturn("   ");
+        when(recommendationRepository.save(any(Recommendation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        RecommendationResponse response = recommendationService.getPersonalizedRecommendations("user-001", 2, "ski");
+
+        // Assert
+        assertThat(response.products()).hasSize(1);
+        assertThat(response.products().getFirst().getProductId()).isEqualTo("inv-001");
+        assertThat(response.products().getFirst().getReason()).contains("personalized recommendation");
+    }
+
+    @Test
+    @DisplayName("候補が空の場合は固定 ID fallback を返さない")
+    void should_returnEmptyRecommendation_when_noCandidates() {
+        // Arrange
+        when(productCandidateClient.findCandidates("ski", 6)).thenReturn(List.of());
+        when(recommendationRepository.save(any(Recommendation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        RecommendationResponse response = recommendationService.getPersonalizedRecommendations("user-001", 2, "ski");
+
+        // Assert
+        assertThat(response.products()).isEmpty();
+        verify(chatClient, never()).prompt(any(Prompt.class));
     }
 
     @Test
@@ -138,32 +217,68 @@ class RecommendationServiceTest {
     }
 
     @Test
-    @DisplayName("類似商品一覧が生成される")
+        @DisplayName("類似商品一覧は対象商品自身を除外して active available 商品だけ返す")
     void should_returnSimilarProducts_when_validProductId() {
         // Arrange
-        when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
-        when(requestSpec.call()).thenReturn(callResponseSpec);
-        when(callResponseSpec.content()).thenReturn("similar products");
+        ProductCandidate origin = candidate("origin-001", "sku-origin", "ski", 10, "ACTIVE");
+        when(productCandidateClient.findByIdOrSku("origin-001")).thenReturn(Optional.of(origin));
+        when(productCandidateClient.findCandidates("ski", 20)).thenReturn(List.of(
+            origin,
+            candidate("similar-101", "sku-101", "ski", 8, "ACTIVE"),
+            candidate("similar-102", "sku-102", "ski", 0, "ACTIVE"),
+            candidate("similar-103", "sku-103", "ski", 8, "INACTIVE")
+        ));
 
         // Act
-        SimilarProductResponse response = recommendationService.getSimilarProducts("prod-001", 5, "user-001");
+        SimilarProductResponse response = recommendationService.getSimilarProducts("origin-001", 5, "user-001");
 
         // Assert
         assertThat(response).isNotNull();
-        assertThat(response.productId()).isEqualTo("prod-001");
-        assertThat(response.similarProducts()).isNotEmpty();
+        assertThat(response.productId()).isEqualTo("origin-001");
+        assertThat(response.similarProducts())
+            .extracting(ProductRecommendation::getProductId)
+            .containsExactly("similar-101");
     }
 
     @Test
-    @DisplayName("トレンド商品一覧が生成される")
+        @DisplayName("トレンド商品一覧は sales top products を inventory で検証して返す")
     void should_returnTrendingProducts_when_requested() {
+        // Arrange
+        when(salesRecommendationClient.fetchTopProductIds(20)).thenReturn(List.of("sku-101", "missing", "sku-102"));
+        when(productCandidateClient.findByIdOrSku("sku-101"))
+            .thenReturn(Optional.of(candidate("inv-101", "sku-101", "ski", 8, "ACTIVE")));
+        when(productCandidateClient.findByIdOrSku("missing")).thenReturn(Optional.empty());
+        when(productCandidateClient.findByIdOrSku("sku-102"))
+            .thenReturn(Optional.of(candidate("inv-102", "sku-102", "ski", 0, "ACTIVE")));
+
         // Act
         TrendingProductResponse response = recommendationService.getTrendingProducts("ski", 10, "weekly");
 
         // Assert
         assertThat(response).isNotNull();
         assertThat(response.category()).isEqualTo("ski");
-        assertThat(response.trendingProducts()).isNotEmpty();
+        assertThat(response.trendingProducts())
+            .extracting(ProductRecommendation::getProductId)
+            .containsExactly("inv-101");
+        }
+
+        @Test
+        @DisplayName("sales top products がない場合は inventory active available 候補で trending fallback する")
+        void should_returnTrendingProductsFromInventoryFallback_when_salesUnavailable() {
+        // Arrange
+        when(salesRecommendationClient.fetchTopProductIds(6)).thenReturn(List.of());
+        when(productCandidateClient.findCandidates("ski", 9)).thenReturn(List.of(
+            candidate("inv-201", "sku-201", "ski", 5, "ACTIVE"),
+            candidate("inv-202", "sku-202", "ski", 0, "ACTIVE")
+        ));
+
+        // Act
+        TrendingProductResponse response = recommendationService.getTrendingProducts("ski", 3, "weekly");
+
+        // Assert
+        assertThat(response.trendingProducts())
+            .extracting(ProductRecommendation::getProductId)
+            .containsExactly("inv-201");
     }
 
     @Test
@@ -178,5 +293,22 @@ class RecommendationServiceTest {
         // Assert
         assertThat(response).isNotNull();
         assertThat(response.status()).isEqualTo("RECEIVED");
+    }
+
+    private ProductCandidate candidate(String productId, String sku, String category, int availableQuantity, String status) {
+        return new ProductCandidate(
+                productId,
+                sku,
+                "Test Product " + productId,
+                "Description",
+                category,
+                "TestBrand",
+                BigDecimal.valueOf(1000),
+                BigDecimal.valueOf(900),
+                List.of("powder", "all-mountain"),
+                availableQuantity + 2,
+                2,
+                availableQuantity,
+                status);
     }
 }

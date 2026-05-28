@@ -5,6 +5,7 @@ import com.example.skishop.common.event.EventPublisher;
 import com.example.skishop.common.exception.BusinessRuleViolationException;
 import com.example.skishop.common.exception.ResourceNotFoundException;
 import com.example.skishop.common.security.SecurityUtils;
+import com.example.skishop.sales.client.InventoryClient;
 import com.example.skishop.sales.dto.*;
 import com.example.skishop.sales.dto.OrderResponse.OrderItemResponse;
 import com.example.skishop.sales.model.*;
@@ -20,7 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -29,20 +31,24 @@ public class OrderService {
 
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
     private static final BigDecimal TAX_RATE = new BigDecimal("0.10");
+    private static final String PAYMENT_FAILED_RELEASE_REASON = "PAYMENT_FAILED";
     private final AtomicLong orderSequence = new AtomicLong(System.currentTimeMillis());
 
     private final OrderRepository orderRepository;
     private final ShipmentRepository shipmentRepository;
     private final ReturnRequestRepository returnRequestRepository;
+    private final InventoryClient inventoryClient;
     private final EventPublisher eventPublisher;
 
     public OrderService(OrderRepository orderRepository,
                         ShipmentRepository shipmentRepository,
                         ReturnRequestRepository returnRequestRepository,
+                        InventoryClient inventoryClient,
                         EventPublisher eventPublisher) {
         this.orderRepository = orderRepository;
         this.shipmentRepository = shipmentRepository;
         this.returnRequestRepository = returnRequestRepository;
+        this.inventoryClient = inventoryClient;
         this.eventPublisher = eventPublisher;
     }
 
@@ -107,6 +113,45 @@ public class OrderService {
 
         eventPublisher.publish(DomainEvent.create("OrderStatusUpdated", "sales-service",
                 new OrderEventPayload(order.getId(), order.getOrderNumber(), order.getCustomerId(), order.getTotalAmount())));
+
+        return toResponse(order);
+    }
+
+    @Transactional
+    public OrderResponse markPaymentCaptured(UUID orderId, UUID paymentId) {
+        log.info("Marking order {} as paid for payment {}", orderId, paymentId);
+        Order order = findOrderOrThrow(orderId);
+        if (order.getPaymentStatus() == Order.PaymentStatus.CAPTURED) {
+            return toResponse(order);
+        }
+
+        order.setPaymentStatus(Order.PaymentStatus.CAPTURED);
+        if (order.getStatus() == Order.OrderStatus.PENDING) {
+            order.setStatus(Order.OrderStatus.CONFIRMED);
+        }
+        order = orderRepository.save(order);
+
+        eventPublisher.publish(DomainEvent.create("OrderPaymentCaptured", "sales-service",
+                new OrderPaymentEventPayload(order.getId(), paymentId, order.getCustomerId(), order.getTotalAmount())));
+
+        return toResponse(order);
+    }
+
+    @Transactional
+    public OrderResponse markPaymentFailed(UUID orderId, UUID paymentId) {
+        log.info("Marking order {} payment as failed for payment {}", orderId, paymentId);
+        Order order = findOrderOrThrow(orderId);
+        if (order.getPaymentStatus() == Order.PaymentStatus.FAILED) {
+            return toResponse(order);
+        }
+
+        releasePaymentFailedReservations(orderId, order);
+
+        order.setPaymentStatus(Order.PaymentStatus.FAILED);
+        order = orderRepository.save(order);
+
+        eventPublisher.publish(DomainEvent.create("OrderPaymentFailed", "sales-service",
+                new OrderPaymentEventPayload(order.getId(), paymentId, order.getCustomerId(), order.getTotalAmount())));
 
         return toResponse(order);
     }
@@ -249,6 +294,34 @@ public class OrderService {
         }
     }
 
+    private void releasePaymentFailedReservations(UUID orderId, Order order) {
+        Map<String, Integer> quantitiesBySku = new LinkedHashMap<>();
+        for (OrderItem item : order.getItems()) {
+            String sku = resolveReleaseSku(item);
+            if (sku == null || item.getQuantity() <= 0) {
+                continue;
+            }
+            quantitiesBySku.put(sku, quantitiesBySku.getOrDefault(sku, 0) + item.getQuantity());
+        }
+
+        String referenceId = orderId.toString();
+        for (Map.Entry<String, Integer> entry : quantitiesBySku.entrySet()) {
+            inventoryClient.releaseReservation(entry.getKey(), entry.getValue(), referenceId, PAYMENT_FAILED_RELEASE_REASON);
+        }
+    }
+
+    private String resolveReleaseSku(OrderItem item) {
+        String productSku = item.getProductSku();
+        if (productSku != null && !productSku.isBlank()) {
+            return productSku.trim();
+        }
+        String productId = item.getProductId();
+        if (productId != null && !productId.isBlank()) {
+            return productId.trim();
+        }
+        return null;
+    }
+
     private OrderResponse toResponse(Order order) {
         var items = order.getItems().stream()
                 .map(i -> new OrderItemResponse(i.getId(), i.getProductId(), i.getProductName(),
@@ -274,6 +347,7 @@ public class OrderService {
     }
 
     public record OrderEventPayload(UUID orderId, String orderNumber, UUID customerId, BigDecimal totalAmount) {}
+    public record OrderPaymentEventPayload(UUID orderId, UUID paymentId, UUID customerId, BigDecimal totalAmount) {}
     public record ShipmentEventPayload(UUID shipmentId, UUID orderId, String carrier) {}
     public record ReturnEventPayload(UUID returnId, String returnNumber, UUID orderId) {}
 }

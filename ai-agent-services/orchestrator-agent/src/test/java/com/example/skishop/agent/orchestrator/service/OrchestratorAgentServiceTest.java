@@ -53,7 +53,10 @@ class OrchestratorAgentServiceTest {
     void orchestrate_with_full_profile_and_coupon_and_points() {
         when(userClient.getUserProfile(anyString(), any()))
                 .thenReturn(new UserManagementClient.UserProfile("u1", "Alice", "GOLD",
-                        List.of("スキー板", "ウェア"), "INTERMEDIATE", 500));
+                        List.of("スキー板", "ウェア"), "INTERMEDIATE", 500,
+                        List.of(new UserManagementClient.CouponSummary("c1", "WINTER10", "PERCENTAGE",
+                                "PERCENTAGE", "10", "3000", "2026-12-31T00:00:00Z")),
+                        List.of()));
 
         var req = new OrchestratorRequest("u1", "初心者向けスキー板を選んで",
                 "s1", "WINTER10", true);
@@ -69,7 +72,7 @@ class OrchestratorAgentServiceTest {
     void orchestrate_with_null_coupon_and_no_points_uses_else_branches() {
         when(userClient.getUserProfile(anyString(), any()))
                 .thenReturn(new UserManagementClient.UserProfile("u2", "Bob", "BRONZE",
-                        null, "BEGINNER", 0));
+                        null, "BEGINNER", 0, null, List.of("sales unavailable")));
 
         var req = new OrchestratorRequest("u2", "ボードを選んで",
                 null, null, false);

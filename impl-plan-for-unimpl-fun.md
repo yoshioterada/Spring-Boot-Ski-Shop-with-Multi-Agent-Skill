@@ -1,1481 +1,919 @@
-# 未完成機能の洗い出しと実装計画
+<!-- markdownlint-disable MD024 MD029 -->
 
-作成日: 2026-05-27
+# 未実装・モック実装項目の修正計画
+
+作成日: 2026-05-28
 
 ## 目的
 
-この文書は、現在の Ski Shop E-Commerce Platform に存在する「形はあるが本番品質としては未完成」「サンプル値・暫定値・スタブで動いている」「外部連携や業務保証が不足している」箇所を洗い出し、本来どのように実装すべきかを具体化するための実装計画である。
+この文書は、プロジェクト全体の再解析で抽出した未実装、スタブ、モック、固定 fallback、placeholder のうち、実装として修正可能な項目を正しく修正するための詳細計画である。
 
-対象は主に以下の領域とする。
+今回はコード修正そのものは行わず、実装時に迷わないように以下を明確化する。
 
-- 決済 Gateway / Webhook
-- AI 推薦・検索
-- Orchestrator 向け User Profile 統合
-- AI Analyzer の実データ連携
-- Model Management
-- Kafka / Outbox / イベント配送保証
-- Agent Cart / Inventory / Coupon 連携の業務整合性
-- フロントエンド上の小さな暫定実装
+- どの項目を修正対象にするか。
+- 現在のコード上、何が原因で未実装・モック扱いになっているか。
+- 既存の API / Repository / Service をどう使えば実データ化できるか。
+- 実装順序、影響範囲、テスト観点、完了条件。
 
-## 現状サマリ
+既存の `impl-plan-for-unimple-fun2.md` は受け入れ基準チェックリスト未完了項目の実装計画であり、本書はその後に見つかった残課題の修正計画である。
 
-プロジェクト全体は、Spring Boot マイクロサービス、Next.js BFF/フロントエンド、Spring AI ベースの AI Support / Multi-Agent System、Kafka イベント連携、PostgreSQL / MongoDB、Docker / Kubernetes / Azure 配備定義まで広く実装されている。
+## 前提
 
-一方で、以下のような箇所は本番機能としては未完成である。
+- 既存の未コミット差分は巻き戻さない。
+- Java 実装時は `.github/instructions/java-coding-standards.instructions.md` と、Controller 変更時は `.github/instructions/api-design.instructions.md` を読む。
+- 本番データの代わりに固定値を表示する修正は避ける。取得不能時は `unavailable`、HTTP error、空表示、または degraded UI として明示する。
+- LLM は推薦理由や自然文生成の補助に限定する。商品 ID、価格、在庫、売上、割引は DB / Service API を source of truth とする。
+- `rg` はこの環境に存在しないため、検証検索は `grep_search` または `git grep` / IDE 検索で実施する。
 
-| 領域 | 現状 | 本来あるべき姿 |
-| --- | --- | --- |
-| 決済 | `simulated` 決済、Webhook は `return null` | PSP 連携、署名検証、冪等 Webhook、返金同期、注文状態連動 |
-| AI 推薦 | LLM 呼び出し後に固定商品 ID を返す箇所あり | 行動履歴・購買履歴・商品 DB を使ったランキング |
-| AI 検索 | クエリ拡張は AI、検索結果は固定値 | inventory の商品検索・検索ログ・ゼロヒットを統合 |
-| User Profile | Orchestrator 用 profile が tier / point / purchase history を暫定値で返す | point / sales / coupon / preference を統合した購買文脈 |
-| AI Analyzer Tool | 一部 Tool が空リストや 0 を返す | sales / inventory / search_logs / coupon から実データ取得 |
-| AI Analytics API | product performance / trends / dashboard などが 0・空配列中心 | 実イベント、検索、推薦、注文データから集計 |
-| Model Management | training は RUNNING 作成のみ、performance は空 Map | 学習ジョブ実行、状態遷移、モデル成果物、評価メトリクス |
-| イベント配送 | Kafka 送信は best-effort、Outbox は選択式 | 業務イベントは Outbox + relay + retry + DLQ |
-| Agent Cart | カート永続化は best-effort | 推薦、価格、在庫予約、カート内容を原子的に整合 |
-| Frontend | 一部 TODO / BFF fallback | API 連携と表示整合性の仕上げ |
+## 修正優先度サマリ
 
-## 再確認結果メモ
+| 優先度 | 項目 | 主な対象 | 修正方針 |
+| --- | --- | --- | --- |
+| P0 | 売上数 API スタブ | sales-management-service | `0` 固定返却を Repository 集計へ置換する。 |
+| P0 | クーポン dummy fallback | coupon-service | 未存在クーポンは dummy 生成せず 404 / usable=false へ置換する。 |
+| P0 | 検索 semantic / feedback route 欠落・feedback 記録薄い実装 | frontend / ai-support-service | 既存 `/api/v1/search/semantic` と `/api/v1/search/feedback` へ BFF を接続し、検索 feedback はログ返却だけでなく永続化する。 |
+| P1 | Admin AI モック・存在しない model route | frontend / ai-support-service | BFF のパス不一致と存在しない個別 route を直し、モデル一覧・学習・status・deploy を実 API に接続する。 |
+| P1 | 管理画面の固定 fallback データ | frontend | 偽データ表示をやめ、部分取得失敗を degraded 表示にする。 |
+| P1 | メールログ画面の固定統計 fallback | frontend / mailsend-service | 固定の日別送信数を廃止し、実統計を返すか取得不可状態を表示する。 |
+| P1 | 在庫発注推奨の random 値 | frontend / sales-management-service | `sku-velocity` 等の実売上速度から推奨数を算出する。 |
+| P1 | 決済 simulated provider の本番混入 | payment-cart-service | simulated を local/test 限定にし、本番 profile では明示 provider を必須化する。 |
+| P2 | EC ホーム固定カテゴリ fallback / footer i18n TODO | frontend | API 失敗時に固定カテゴリを実データ風に出さず、footer 文言は i18n 辞書へ移す。 |
+| P2 | 天気 fallback 東京固定 | weather-agent | geocoding 失敗時に東京データを返さず unavailable を明示する。 |
+| P2 | カテゴリ名 TODO / sort 空実装 | frontend / inventory-management-service | Category API と URL query 更新へ接続する。 |
+| P2 | `Math.random()` UUID fallback | frontend | `crypto.getRandomValues` ベース fallback へ置換する。 |
+| P2 | Terraform quickstart image placeholder | infra | image を変数化し、実デプロイ対象 image を必須化する。 |
+| P3 | CircuitBreaker の空値 fallback | ai-support-service ほか | 偽データではなく `DataAvailability` / degraded response を一貫させる。 |
 
-2026-05-27 に本計画を再確認した結果、以下を補足する。
+## 現状調査メモ
 
-- inventory-management-service には `/api/v1/products/search` と `SearchAnalyticsService.logSearchAsync` があり、検索ログとゼロヒット集約の土台は既に存在する。ただし検索条件は現状 name / brand の部分一致が中心で、ai-support-service の `SearchService` は固定検索結果を返すため、AI 検索全体としては未完成である。
-- sales-management-service の `SalesAnalyticsController` は summary / trends / sku-velocity / monthly-revenue / seasonal-weights / monthly-sales / yoy-growth を既に提供している。したがって AI Analyzer 側は「sales に API がない」ではなく「既存 API を ToolFunctions が十分に利用できていない」ことが主問題である。
-- coupon-service には `dead_stock_actions` migration はあるが、`DeadStockAction` entity / repository / controller は見当たらない。DeadStockService が呼ぶ `/api/v1/dead-stock-actions` 系 API は計画どおり不足と判断する。
-- ai-support-service の `AnalyticsService` には、product performance / trends / customer segments / dashboard などで 0 や空配列を返す暫定実装が残っている。初版計画ではこの観点が薄かったため、独立項目として追記する。
-- payment-cart-service には PSP client / webhook event / refund table に相当する実装は見当たらず、決済 Gateway / Webhook の未完成判定は妥当である。
+### sales-management-service
 
-## 優先度
+- `InternalSalesController.getSalesCount()` は `count: 0` 固定返却で、コメントにも「現状スタブ」とある。
+- `OrderRepository` には日次売上、Top 商品、顧客購入サマリなどの native query はあるが、商品 ID 単位の期間販売数 query はない。
+- `orders` と `order_items` は `order_items.order_id = orders.id` で結合できる。
+- 既存集計では `CANCELLED` / `RETURNED` を除外しているため、販売数 API も同じ基準に合わせる。
 
-### P0: 業務フローの正しさに直結するもの
+### coupon-service
 
-- 決済 Gateway / Webhook の本実装
-- 注文、決済、在庫、ポイント、クーポンの状態遷移連携
-- Kafka / Outbox による業務イベント配送保証
-- Orchestrator が使う User Profile の実データ化
+- `CouponRepository.findByCode(String code)` は存在する。
+- `InternalCouponController.findByCode()` は未存在時に `dummy-<code>`、10% 割引、最低注文額 3000 円などの架空値を返している。
+- `Coupon.isUsable()` で active / usageLimit / expiresAt の利用可否判定ができる。
 
-### P1: AI 体験の品質に直結するもの
+### frontend / ai-support-service search
 
-- AI 推薦を実商品・実履歴に接続
-- AI 検索を inventory / search_logs に接続
-- AI Analyzer Tool の空実装を実データに接続
-- Agent Cart / Inventory reservation の整合性強化
+- `ai-support-service` には `SearchController` があり、`POST /api/v1/search/semantic` と `POST /api/v1/search/feedback` が実装済み。
+- `api-gateway-service` は `/api/v1/search/**` を ai-support-service へ route している。
+- frontend の `/search` 画面は `/api/search/semantic` と `/api/search/feedback` を呼ぶが、Next.js BFF route は存在しない。
+- frontend の semantic fallback では `SKU-SEM-*`、在庫数 10、カテゴリ空文字などの固定値を生成している。
+- `SearchFeedbackRequest` の実 field は `query`, `resultId`, `relevant`, `userId` である。現状 `SearchService.recordSearchFeedback()` はログ出力と `FeedbackResponse` 返却のみで、検索 analytics へ関連度 feedback を永続化していない。
 
-### P2: 運用・分析・改善サイクル
+### frontend Admin AI
 
-- Model Management の学習ジョブ化
-- LLM コスト、Tool 成功率、業務 KPI の observability
-- 管理画面でのエラー・部分成功・再試行 UI
+- `ai-support-service` のモデル管理 API は `/api/v1/models/**`。
+- `api-gateway-service` も `/api/v1/models/**` を ai-support-service へ route している。
+- frontend BFF は `/api/v1/ai/models` と `/api/v1/ai/models/train` を呼んでおり、パスが合っていない。
+- frontend BFF の `/api/admin/ai/models/[id]` と `/api/admin/ai/models/[id]/deploy` は、backend に存在しない `/api/v1/ai/models/{id}` / `/api/v1/ai/models/{id}/deploy` を呼んでいる。backend の deploy は `POST /api/v1/models/deploy` に request body を送る形である。
+- Admin AI 画面は API 失敗時に `MOCK_MODELS` を表示し、学習進捗も `Math.random()` で進めている。
 
-### P3: UI 仕上げ・細部
+### frontend Admin Dashboard / Inventory
 
-- カテゴリ名 TODO など小さな暫定表示
-- i18n 未完了箇所
-- BFF fallback の標準化
+- Admin Dashboard は KPI、売上グラフ、低在庫、最近注文に固定 fallback データを持つ。
+- Admin Inventory の発注推奨は `Math.random()` で週次売上見込みを作り、推奨発注数を算出している。
+- sales-management-service には `/api/v1/admin/orders/analytics/sku-velocity` があり、SKU 別 `sales30`, `sales90`, `units30`, `units90`, `lastSoldAt`, `avgPrice` を取得できる。
 
-## 1. 決済 Gateway / Webhook
+### frontend Mail Logs / EC Home
 
-### 該当箇所
+- `frontend/src/app/(admin)/admin/mail-logs/page.tsx` は `/api/admin/mail/stats` が日別配列を返さない場合、月〜日の固定 `sentCount` / `successRate` を表示する。
+- mailsend-service の `/api/v1/mail/stats` は `totalSent`, `totalFailed`, `totalPending`, `successRate`, `sentByTemplate` の集計を返すが、現状の日別 chart 用 `daily` は返さない。
+- `frontend/src/components/ec/category-section.tsx` はカテゴリ API が空または失敗した場合に `cat-ski` など固定カテゴリカードを表示する。これは skeleton ではなく実リンク付きの業務データ風 fallback である。
+- `frontend/src/components/layout/ec-footer.tsx` には footer 紹介文の `TODO: i18n` が残っている。
+- `frontend/src/lib/tips/index.ts` の `Math.random()` は UX 上の Tip ランダム表示であり、売上・在庫・割引・ID 生成ではない。修正対象にする場合は「全 main code から Math.random を消す」方針の一部として扱う。
 
-- `payment-cart-service/src/main/java/com/example/skishop/payment/service/PaymentService.java`
-- `payment-cart-service/src/main/java/com/example/skishop/payment/model/Payment.java`
-- `payment-cart-service/src/main/resources/db/migration/V1__create_payment_tables.sql`
-- `payment-cart-service/src/main/java/com/example/skishop/payment/controller/PaymentController.java`
-- `frontend/src/app/api/payments/intent/route.ts`
-- `frontend/src/app/api/payments/[id]/process/route.ts`
-- `frontend/src/app/api/admin/payments/[id]/refund/route.ts`
+### payment-cart-service
 
-### 現状
+- `SimulatedPaymentGatewayClient` が `PaymentGatewayClient` の唯一の実装として Component 登録されている。
+- `PaymentGatewayProperties.DEFAULT_PROVIDER` と `application.properties` の default が `simulated`。
+- `pm_fail` によるカード失敗シナリオは simulated provider としては有用だが、本番 profile の既定値として残すべきではない。
 
-`PaymentService.processPayment` は以下のように擬似成功として処理している。
+### weather-agent
 
-- status を `CAPTURED` にする
-- `gatewayProvider` に `simulated` を設定
-- `gatewayResponse` に固定 JSON を保存
-- `PaymentProcessed` イベントを発行
+- geocoding 失敗、または location 空の場合に東京座標を返す。
+- ユーザーが北海道や長野を意図していても、取得失敗時に東京の天気が正常値として扱われる。
 
-`handleWebhook` はコメント上も stub で、署名検証、payload 解析、状態反映が未実装である。
+## 実装順序
 
-### 問題
+1. backend の明確なスタブ / dummy 返却を先に消す。
+2. frontend の存在しない BFF route とパス不一致を直し、モック fallback が発動しない状態にする。
+3. 管理 UI の固定データと random 計算を実データ / degraded 表示に置き換える。
+4. 本番混入リスクがある simulated / placeholder を profile や変数で制御する。
+5. fallback の表現を `DataAvailability` / degraded UI として一貫させる。
+6. 最後に横断検索と focused tests で、`dummy`, `MOCK`, `Math.random`, `TODO`, `placeholder` の残りを分類確認する。
 
-- 外部 PSP の決済状態と DB 状態が一致しない。
-- Webhook の重複配送、順序逆転、遅延配送に対応できない。
-- 支払い成功後の注文確定、在庫引当確定、ポイント付与、クーポン消込が保証されない。
-- 返金の部分返金、二重返金、返金失敗が表現できない。
-- PSP の event id による冪等性がない。
-- 管理画面から見る支払い状態が外部決済事実と乖離する。
+## Phase 1: Sales count stub の実データ化
 
-### 本来の実装方針
+### 対象ファイル
 
-PSP 抽象化レイヤーを導入し、まずは Stripe 互換の構造を想定する。将来 PayPay / GMO / Adyen などへ差し替えられるように、ドメイン層は PSP 固有型に依存しない。
+- `sales-management-service/src/main/java/com/example/skishop/sales/controller/InternalSalesController.java`
+- `sales-management-service/src/main/java/com/example/skishop/sales/repository/OrderRepository.java`
+- `sales-management-service/src/test/java/com/example/skishop/sales/controller/InternalSalesControllerTest.java` 新規候補
+- `sales-management-service/src/test/java/com/example/skishop/sales/repository/OrderRepositoryTest.java` 新規候補
 
-#### 追加する interface
+### 修正方針
+
+`getSalesCount(productId, days)` の `count: 0` 固定返却をやめ、`order_items.product_id` 単位の販売数量を返す。
+
+動的価格エージェントが利用する値としては「注文数」より「販売数量」が自然であるため、`SUM(oi.quantity)` を `count` として返す。将来的な混乱を避けるため、response には `count` に加えて `quantity` も同値で含めるか、互換性を確認したうえで `count` のみにする。
+
+集計条件は既存 analytics query と揃える。
+
+- `orders.created_at >= since`
+- `orders.status NOT IN ('CANCELLED', 'RETURNED')`
+- `order_items.product_id = :productId`
+
+### 実装手順
+
+1. `OrderRepository` に以下の query を追加する。
 
 ```java
-public interface PaymentGatewayClient {
-    GatewayPaymentIntent createIntent(CreateGatewayIntentCommand command);
-    GatewayPaymentResult confirmPayment(ConfirmGatewayPaymentCommand command);
-    GatewayRefundResult refund(RefundGatewayCommand command);
-    VerifiedWebhookEvent verifyAndParseWebhook(String payload, String signature);
+@Query(value = """
+        SELECT COALESCE(SUM(oi.quantity), 0)
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE oi.product_id = :productId
+          AND o.created_at >= :since
+          AND o.status NOT IN ('CANCELLED', 'RETURNED')
+        """, nativeQuery = true)
+long countSoldQuantityByProductIdSince(@Param("productId") String productId,
+                                       @Param("since") Instant since);
+```
+
+2. `InternalSalesController.getSalesCount()` で `days` を validation する。
+
+- `days < 1` は 400 にする。Controller に `@Validated` を付けて `@Min(1) @Max(365)` を使うのが望ましい。
+- 動的 pricing 用で過大期間が不要なら `@Max(365)` にする。
+
+3. `Instant since = Instant.now().minus(days, ChronoUnit.DAYS)` を計算する。
+4. Repository から販売数量を取得し、以下の形式で返す。
+
+```json
+{
+  "productId": "...",
+  "days": 30,
+  "count": 12,
+  "quantity": 12,
+  "source": "sales-management-service"
 }
 ```
 
-#### 実装クラス
-
-- `SimulatedPaymentGatewayClient`: ローカル開発・テスト用
-- `StripePaymentGatewayClient`: 本番用の候補
-- `PaymentGatewayProperties`: provider, secret, webhookSecret, timeout, retry を設定
-
-#### DB 追加案
-
-`payments` に以下を追加する。
-
-- `gateway_provider`
-- `gateway_payment_id`
-- `gateway_customer_id`
-- `idempotency_key`
-- `authorized_at`
-- `captured_at`
-- `failed_at`
-- `failure_code`
-- `failure_reason`
-- `raw_gateway_status`
-
-Webhook 用に `payment_webhook_events` を追加する。
-
-- `id`
-- `provider`
-- `event_id`
-- `event_type`
-- `payment_id`
-- `payload_hash`
-- `received_at`
-- `processed_at`
-- `status` (`RECEIVED`, `PROCESSED`, `DUPLICATE`, `FAILED`, `IGNORED`)
-- `error_message`
-
-返金を正規化するため `payment_refunds` を追加する。
-
-- `id`
-- `payment_id`
-- `gateway_refund_id`
-- `amount`
-- `status` (`REQUESTED`, `SUCCEEDED`, `FAILED`, `CANCELLED`)
-- `reason`
-- `requested_by`
-- `created_at`
-- `completed_at`
-
-#### 状態遷移
-
-Payment status は最低限以下に拡張する。
-
-- `PENDING`
-- `REQUIRES_ACTION`
-- `AUTHORIZED`
-- `CAPTURED`
-- `FAILED`
-- `CANCELLED`
-- `PARTIALLY_REFUNDED`
-- `REFUNDED`
-
-状態遷移はサービス内で明示的に検証する。
-
-| 現在 | 許可する遷移 |
-| --- | --- |
-| PENDING | REQUIRES_ACTION, AUTHORIZED, CAPTURED, FAILED, CANCELLED |
-| REQUIRES_ACTION | AUTHORIZED, CAPTURED, FAILED, CANCELLED |
-| AUTHORIZED | CAPTURED, CANCELLED, FAILED |
-| CAPTURED | PARTIALLY_REFUNDED, REFUNDED |
-| PARTIALLY_REFUNDED | PARTIALLY_REFUNDED, REFUNDED |
-| FAILED / CANCELLED / REFUNDED | 原則終端 |
-
-### Webhook 実装詳細
-
-Webhook 処理は以下の順序にする。
-
-1. raw payload と signature を受け取る。
-2. `PaymentGatewayClient.verifyAndParseWebhook` で署名検証する。
-3. PSP event id を `payment_webhook_events` に insert する。
-4. unique constraint により重複 event を検出する。
-5. event type ごとに Payment / Refund を更新する。
-6. 状態更新後に domain event を Outbox に記録する。
-7. 処理完了後 `payment_webhook_events.status=PROCESSED` にする。
-
-重複 event は 200 OK を返し、再配送を止める。署名エラーは 400、処理一時失敗は 5xx で PSP に retry させる。
-
-### 注文・在庫・ポイント・クーポン連携
-
-決済成功後は `PaymentCaptured` を発行し、以下を後続処理する。
-
-- sales-management-service: order paymentStatus を `PAID` に更新
-- inventory-management-service: reserved stock を sold stock として確定、または stockOut
-- point-service: 購入金額に応じてポイント付与
-- coupon-service: クーポン利用を確定
-- mailsend-service: 注文確定メール送信
-
-決済失敗またはキャンセル時は以下を行う。
-
-- order paymentStatus を `FAILED` または `CANCELLED`
-- inventory reservation release
-- coupon reservation / redemption rollback
-
-### 実装ステップ
-
-1. `PaymentGatewayClient` と DTO を追加する。
-2. `SimulatedPaymentGatewayClient` を既存ロジックから切り出す。
-3. `PaymentService` を gateway 経由に変更する。
-4. Webhook event table migration を追加する。
-5. Webhook 署名検証と冪等 insert を実装する。
-6. `PaymentCaptured`, `PaymentFailed`, `RefundProcessed` を Outbox 経由で発行する。
-7. sales / inventory / point / coupon の consumer または internal API 連携を実装する。
-8. 管理画面で payment event history と refund status を表示する。
+5. 既存の `TODO` コメントを削除する。
 
 ### テスト
 
-- Gateway client mock による `createPaymentIntent`
-- `processPayment` の成功 / 失敗 / requires_action
-- Webhook 署名不正
-- Webhook 重複 event
-- Webhook 順序逆転
-- 部分返金と全額返金
-- 二重返金防止
-- PaymentCaptured から Order / Inventory / Point / Coupon へ連携する統合テスト
+- product A の有効注文が 2 件、quantity 合計 3 の場合、`count=3` を返す。
+- `CANCELLED` / `RETURNED` 注文は除外される。
+- 期間外注文は除外される。
+- productId が存在しない場合は `count=0` を返す。
+- `days=0` / `days=366` は validation error になる。
 
-## 2. AI 推薦
+### 完了条件
 
-### 該当箇所
+- `InternalSalesController` から `TODO` と `count: 0` 固定値が消える。
+- 動的価格エージェントが販売実績 0 固定にならない。
 
-- `ai-support-service/src/main/java/com/example/skishop/ai/service/RecommendationService.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/model/Recommendation.java`
-- `inventory-management-service/src/main/java/com/example/skishop/inventory/service/ProductService.java`
-- `sales-management-service/src/main/java/com/example/skishop/sales/service/OrderService.java`
-- `frontend/src/components/ec/personalized-section.tsx`
-- `frontend/src/components/ec/trending-section.tsx`
+## Phase 2: Coupon dummy fallback の廃止
 
-### 現状
+### 対象ファイル
 
-`RecommendationService` は ChatClient を呼び出しているが、実際に返す商品は `prod-001`, `prod-002`, `prod-003` や `similar-001`, `trend-001` などの固定値である。
-
-### 問題
-
-- 実在しない productId を返す可能性が高い。
-- 在庫切れ、販売停止、価格、カテゴリ、ユーザー購買履歴を考慮できない。
-- 推薦クリックや購買結果が次回推薦に反映されない。
-- LLM の出力を使っているように見えるが、ランキングには実質使われていない。
-
-### 本来の実装方針
-
-AI 推薦は「候補生成」「特徴量取得」「ランキング」「説明生成」を分ける。
-
-#### 候補生成
-
-最低限、以下の候補ソースを統合する。
-
-- 同カテゴリの人気商品
-- ユーザーの過去購入カテゴリに近い商品
-- 閲覧履歴に近い商品
-- カート内商品の類似商品
-- 季節・天候・在庫状況に応じた商品
-- 新着商品
-- セール中商品
-
-#### 必要なデータ
-
-inventory-management-service:
-
-- productId
-- sku
-- categoryId
-- brand
-- price
-- salePrice
-- tags
-- attributes
-- stockQuantity
-- availableQuantity
-- status
-
-sales-management-service:
-
-- user purchase history
-- product sales count
-- category sales trend
-- co-purchase relation
-
-ai-support-service:
-
-- recommendation impression
-- click
-- feedback
-- conversion
-
-#### API 追加案
-
-inventory-management-service:
-
-- `GET /api/v1/internal/products/recommendation-candidates`
-- `POST /api/v1/internal/products/batch-summary`
-
-sales-management-service:
-
-- `GET /api/v1/internal/sales/users/{userId}/purchase-profile`
-- `GET /api/v1/internal/sales/products/trending`
-- `GET /api/v1/internal/sales/products/{productId}/co-purchased`
-
-ai-support-service:
-
-- `POST /api/v1/recommendations/impression`
-- `POST /api/v1/recommendations/{recommendationId}/click`
-- `POST /api/v1/recommendations/conversion`
-
-### ランキング方式
-
-初期実装は deterministic scoring で十分である。
-
-スコア例:
-
-```text
-score =
-  categoryAffinity * 0.30
-  + purchaseHistoryAffinity * 0.20
-  + trendScore * 0.15
-  + stockScore * 0.10
-  + priceFitScore * 0.10
-  + seasonalityScore * 0.10
-  + noveltyScore * 0.05
-```
-
-LLM はランキングそのものではなく、上位候補の「推薦理由」を短く生成する用途に限定する。これにより、架空 productId や在庫切れ商品推薦を防げる。
-
-### 実装ステップ
-
-1. 実商品候補を取得する `ProductCandidateClient` を ai-support-service に追加。
-2. sales-management-service に購買 profile API を追加。
-3. RecommendationService から固定 productId を削除。
-4. deterministic ranking を実装。
-5. LLM は上位 3-10 件に対する説明生成に限定。
-6. 推薦 impression / click / conversion を保存。
-7. trending / similar / personalized をそれぞれ実データ化。
-
-### テスト
-
-- 在庫切れ商品を推薦しない。
-- 存在しない productId を返さない。
-- category filter が効く。
-- ユーザー履歴がない場合は trending fallback。
-- LLM 失敗時も推薦リストは返る。
-- click / conversion が保存される。
-
-## 3. AI 検索
-
-### 該当箇所
-
-- `ai-support-service/src/main/java/com/example/skishop/ai/service/SearchService.java`
-- `inventory-management-service/src/main/java/com/example/skishop/inventory/controller/SearchAnalyticsController.java`
-- `inventory-management-service/src/main/java/com/example/skishop/inventory/service/SearchAnalyticsService.java`
-- `docker/initdb-mongo/03_ai_analyzer_search_log_index.js`
-- `docker/initdb-mongo/05_seed_search_logs.js`
-- `frontend/src/app/(ec)/search/page.tsx`
-
-### 現状
-
-SearchService は AI で query enhancement を行うが、検索結果は固定値である。
-
-一方、inventory-management-service 側には `/api/v1/products/search` があり、`ProductController` から `SearchAnalyticsService.logSearchAsync` を呼んで検索ログを保存している。さらに `SearchAnalyticsService.getZeroHitAggregation` により search_logs からゼロヒット検索クエリを集約できる。
-
-したがって正確には、「検索ログ基盤が未実装」ではなく、「ai-support-service の AI 検索が inventory の実検索・実ログに接続されていない」「inventory の検索条件が name / brand 中心で、semantic / faceted search としては不足している」状態である。
-
-### 問題
-
-- ユーザー検索結果が商品 DB と一致しない。
-- ai-support-service 経由の検索が inventory の search_logs に残らない可能性がある。
-- 検索改善の feedback loop が成立しない。
-- autocomplete が単純な suffix 生成で、実商品・検索履歴に基づかない。
-- inventory の検索条件が name / brand に寄っており、SKU、タグ、属性、価格、在庫、カテゴリを横断した検索としては弱い。
-
-### 本来の実装方針
-
-検索の実行主体は inventory-management-service に寄せ、ai-support-service は query understanding / semantic expansion / ranking explanation を担う。
-
-#### Search pipeline
-
-1. 入力 query を正規化する。
-2. ai-support-service で query expansion / intent classification を行う。
-3. inventory-management-service へ検索する。
-4. inventory が以下を実行する。
-   - name / brand / sku text search
-   - category filter
-   - tag / attributes filter
-   - price range
-   - stock status
-   - sort
-5. 検索結果と検索ログを保存する。
-6. 0 件なら zero-hit log を保存する。
-7. ai-support-service が必要に応じて検索結果の説明・関連クエリを付与する。
-
-#### MongoDB index
-
-products:
-
-- text index: `name`, `description`, `brand`, `tags`
-- compound index: `categoryId`, `status`, `regularPrice`
-- `attributes` は必要に応じて key ごとの index
-
-search_logs:
-
-- `normalizedQuery`
-- `resultCount`
-- `category`
-- `userIdHash`
-- `createdAt`
-- `clickedProductId`
-- `converted`
-
-### API 追加 / 修正案
-
-inventory-management-service:
-
-- `GET /api/v1/products/search`
-  - `q`
-  - `category`
-  - `minPrice`
-  - `maxPrice`
-  - `tags`
-  - `inStock`
-  - `sort`
-  - `page`
-  - `size`
-  - `enhancedQuery`
-  - `source`
-- `GET /api/v1/search/autocomplete`
-- `POST /api/v1/search/events/click`
-- `POST /api/v1/search/events/conversion`
-
-ai-support-service:
-
-- `POST /api/v1/search/semantic`
-  - query understanding を行い、inventory search を呼ぶ。
-
-### 実装ステップ
-
-1. ProductRepository に text search / filter query を追加。
-2. SearchAnalyticsService に検索ログ保存 API を統合。
-3. SearchService の固定結果を削除し、inventory WebClient を呼ぶ。
-4. autocomplete を search_logs + product names から生成。
-5. zero-hit aggregation が実検索ログを使うように統一。
-6. フロント検索画面の result schema を実 API に合わせる。
-7. ai-support-service 経由の semantic search でも inventory 側に search log が残るよう、source と enhancedQuery を渡す。
-
-### テスト
-
-- 商品名、ブランド、SKU、タグ検索。
-- category / price / stock filter。
-- 0 件時に zero-hit log が保存される。
-- autocomplete が頻出検索語と商品名から返る。
-- LLM query expansion 失敗時は原 query で検索される。
-
-## 4. Orchestrator 向け User Profile
-
-### 該当箇所
-
-- `user-management-service/src/main/java/com/example/skishop/usermanagement/service/UserService.java`
-- `user-management-service/src/main/java/com/example/skishop/usermanagement/dto/UserProfileResponse.java`
-- `ai-agent-services/orchestrator-agent/src/main/java/com/example/skishop/agent/orchestrator/client/UserManagementClient.java`
-- `ai-agent-services/orchestrator-agent/src/main/java/com/example/skishop/agent/orchestrator/service/OrchestratorAgentService.java`
-- `point-service/src/main/java/com/example/skishop/point/controller/InternalPointController.java`
 - `coupon-service/src/main/java/com/example/skishop/coupon/controller/InternalCouponController.java`
-- `sales-management-service/src/main/java/com/example/skishop/sales/controller/InternalSalesController.java`
+- `coupon-service/src/main/java/com/example/skishop/coupon/repository/CouponRepository.java`
+- `coupon-service/src/test/java/com/example/skishop/coupon/controller/InternalCouponControllerTest.java` 新規候補
+- coupon API を呼ぶ frontend BFF / client
 
-### 現状
+### 修正方針
 
-UserService の `getUserProfile` は Orchestrator 向けの拡張 profile として存在するが、以下が暫定値である。
+存在しないクーポンコードに対して架空の 10% 割引を返さない。正しい挙動は以下のどちらかに統一する。
 
-- customerTier: `STANDARD`
-- purchasedCategories: empty list
-- skillLevel: user preference の `preferred_skill_level` か `INTERMEDIATE`
-- pointBalance: `0`
+推奨案は **404 Not Found**。
 
-### 問題
+- 未存在: `404` + `{ "error": "COUPON_NOT_FOUND", "couponCode": code }`
+- 存在するが期限切れ / 使用上限超過 / inactive: `200` + `usable=false` と理由を返す。
+- 存在して利用可能: DB の値を返す。
 
-- Dynamic Pricing Agent の customerTier が実会員ランクを反映しない。
-- Coupon Optimization Agent がポイント残高や利用可能クーポンを正しく使えない。
-- Equipment Matching Agent が過去購入カテゴリを使えない。
-- 購入支援のパーソナライズ精度が低い。
+AI agent や frontend が「未存在でも 200 を期待している」場合は互換案として `200 usable=false` も選べる。ただし dummy ID は絶対に返さない。
 
-### 本来の実装方針
+### 実装手順
 
-User Profile は user-management-service が集約 API を提供する。ただし、他サービス DB を直接参照せず internal API で集約する。
+1. `findByCode()` の `coupon == null` branch を削除する。
+2. `couponRepository.findByCode(code)` が空なら `ResponseEntity.notFound().build()` か、共通例外 `ResourceNotFoundException` へ置換する。
+3. response field を既存 coupon の source of truth に揃える。
 
-#### 集約する項目
-
-- 基本情報
-  - displayName
-  - emailVerified
-  - status
-  - role
-- preference
-  - skillLevel
-  - preferredResorts
-  - preferredCategories
-  - budgetRange
-  - height / weight / bootSize など任意
-- point
-  - currentBalance
-  - currentTier
-  - tierName
-  - pointMultiplier
-- sales
-  - purchasedCategories
-  - recentPurchasedProductIds
-  - totalOrders
-  - totalSpent
-  - lastPurchaseAt
-- coupon
-  - availableCouponCount
-  - bestAvailableCoupon summary
-
-#### 追加 API
-
-point-service:
-
-- `GET /api/v1/internal/points/{userId}/profile`
-
-sales-management-service:
-
-- `GET /api/v1/internal/sales/users/{userId}/purchase-profile`
-
-coupon-service:
-
-- `GET /api/v1/internal/coupons/users/{userId}/summary`
-
-user-management-service:
-
-- `GET /api/v1/users/{id}/profile` で上記を集約。
-
-### 障害時の方針
-
-Orchestrator の profile 取得は UX に直結するため、部分失敗を許容する。
-
-- point-service 失敗: tier=`STANDARD`, balance=0, `profileWarnings` に記録
-- sales-service 失敗: purchase history empty
-- coupon-service 失敗: coupon summary unknown
-
-レスポンスには `profileCompleteness` と `warnings` を入れるとよい。
-
-### 実装ステップ
-
-1. `UserProfileResponse` を拡張する。
-2. point / sales / coupon に internal summary API を追加。
-3. user-management-service に WebClient client を追加。
-4. timeout / circuit breaker / fallback を設定。
-5. Orchestrator prompt に `profileCompleteness` を含める。
-6. Agent 側で unknown / fallback を扱う。
-
-### テスト
-
-- 全サービス成功時に tier / point / purchasedCategories が入る。
-- point-service 失敗時も profile が返る。
-- sales-service 失敗時も Orchestrator が動く。
-- JWT / internal API key の保護確認。
-
-## 5. AI Analyzer Tool 群の実データ接続
-
-### 該当箇所
-
-- `ai-support-service/src/main/java/com/example/skishop/ai/tool/AnalyticsToolFunctions.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/service/AdminAnalyzerService.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/service/SeasonalForecastService.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/service/DeadStockService.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/service/ZeroHitOpportunityService.java`
-- `sales-management-service/src/main/java/com/example/skishop/sales/controller/SalesAnalyticsController.java`
-- `inventory-management-service/src/main/java/com/example/skishop/inventory/controller/SearchAnalyticsController.java`
-
-### 現状
-
-`AnalyticsToolFunctions` には本来 AI Analyzer が使う Tool があるが、以下は空実装または 0 固定値である。
-
-- `getInventoryLevels`: inventory API を呼ぶが結果を捨てて空リストを返す。
-- `getReorderPoints`: 0 固定。
-- `getWeeklyComparison`: 0 固定。
-- `getDeadStock`: 空リスト。
-- `getInventoryVelocity`: 0 固定。
-- `getZeroHitOpportunities`: 空リスト。
-- `searchProductCatalog`: 空リスト。
-
-一方で `DeadStockService` や `ZeroHitOpportunityService` には独自に実データへ近い実装があるため、ToolFunctions とサービス実装の責務が重複・分散している。
-
-### 問題
-
-- 管理者 AI チャットが、Tool を呼んでも空・0 の情報しか得られない場面がある。
-- AI が「数値生成禁止」の制約を守るほど、回答が空になる。
-- DeadStock / ZeroHit の専用 API とチャット Tool の結果が一致しない。
-- 週次比較や発注点が本番判断に使えない。
-
-### 本来の実装方針
-
-AI Analyzer の Tool は、専用サービスまたは各マイクロサービスの analytics API を呼び、同じ計算ロジックを使うようにする。
-
-#### Tool ごとの接続先
-
-| Tool | 接続先 | 実装方針 |
-| --- | --- | --- |
-| getDailyRevenue | sales analytics summary | 既存 summary の total / dailyRevenue を正しく DTO に詰める |
-| getTopProducts | sales analytics summary / sku velocity | productId, sku, name, qty, revenue |
-| getCategoryShare | sales analytics + inventory category | categoryId/name/revenue/share |
-| getInventoryLevels | inventory `/api/v1/inventory/all` | stock, available, reserved, reorderPoint |
-| getReorderPoints | inventory product + sales velocity | currentStock, reorderPoint, safetyStock |
-| getWeeklyComparison | sales summary を今週 / 先週で 2 回呼ぶ、または専用 API | revenue/orders/aov/delta |
-| getSeasonalHistorical | sales monthly-revenue | monthly revenue/orders/yoy |
-| getDeadStock | DeadStockService | 専用サービスの結果を Tool 型に変換 |
-| getInventoryVelocity | sales `/sku-velocity` | sales30/sales90/velocity/DoS |
-| getZeroHitOpportunities | ZeroHitOpportunityService | query/searchCount/loss/category |
-| searchProductCatalog | inventory search | keyword に一致する実商品 |
-
-#### 既存 API を使う際の注意
-
-- sales-management-service の `/api/v1/admin/orders/analytics/summary` には `dailyRevenue`, `topProducts`, `categoryRevenue` が既に含まれる。ToolFunctions ではこの構造を正しく parse し、空リストに潰さない。
-- `/api/v1/admin/orders/analytics/sku-velocity` は `mv_sku_velocity` を返すため、DeadStock / InventoryVelocity はこの API を第一候補にする。
-- inventory-management-service の `/api/v1/inventory/all` は `ProductResponse` のリストを返す。ToolFunctions の `getInventoryLevels` は現在 response を捨てているため、sku / stockQuantity / availableQuantity / status に変換する。
-- inventory-management-service の `/api/v1/products/analytics/zero-hit-queries` は既にゼロヒット集約を返す。ToolFunctions は ZeroHitOpportunityService と同じ正規化・dismiss 条件を使う。
-
-### 発注点計算
-
-`getReorderPoints` は以下の式から始める。
-
-```text
-dailyDemand = max(sales30 / 30, sales90 / 90, defaultDemand)
-leadTimeDays = categoryLeadTimeDays(categoryId)
-safetyStock = ceil(stddevDemand * serviceLevelFactor * sqrt(leadTimeDays))
-reorderPoint = ceil(dailyDemand * leadTimeDays + safetyStock)
-recommendedOrderQty = max(0, reorderPoint + targetCoverDays * dailyDemand - currentStock)
-```
-
-最初の実装で stddev がない場合は、カテゴリごとの係数で代替する。
-
-### 実装ステップ
-
-1. `AnalyticsToolFunctions` の空実装を一覧化してテストに落とす。
-2. sales-management-service の analytics API に不足フィールドを追加。
-3. inventory-management-service の inventory all / search / analytics API の schema を固定。
-4. DeadStockService / ZeroHitOpportunityService を ToolFunctions から呼ぶ、または共通 adapter を作る。
-5. fallback は空・0 のみではなく `dataUnavailable=true` と reason を返せる DTO に変更する。
-6. AdminAnalyzerService の prompt に「dataUnavailable の場合はその旨を明記」と追加する。
-
-### テスト
-
-- ToolFunctions が実 WebClient response を DTO に変換する。
-- 空データ時は「0」と「取得失敗」を区別する。
-- DeadStock 専用 API と Tool の件数が一致する。
-- ZeroHit 専用 API と Tool の件数が一致する。
-- LLM を使わず Tool 単体で業務判断可能な値を返す。
-
-## 6. Model Management
-
-### 該当箇所
-
-- `ai-support-service/src/main/java/com/example/skishop/ai/service/ModelManagementService.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/controller/ModelManagementController.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/model/ModelTraining.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/model/ModelVersion.java`
-
-### 現状
-
-- `trainModel` は `ModelTraining` を `RUNNING` で保存するだけ。
-- 実際の学習ジョブは起動しない。
-- `ModelVersion` は自動作成されない。
-- `getModelPerformance` は空 Map を返す。
-
-### 問題
-
-- 管理画面上は「学習開始」に見えるが、完了しない。
-- モデル version / performance / deploy の意味が薄い。
-- 推薦・検索・予測の改善サイクルにつながらない。
-
-### 本来の実装方針
-
-最初から重い ML pipeline を作る必要はない。まずは「オフライン集計ジョブ」として deterministic model artifact を作る。
-
-#### Phase 1: Lightweight batch model
-
-- 推薦モデル:
-  - category affinity
-  - co-purchase matrix
-  - trending score
-  - user segment score
-- 検索モデル:
-  - query synonym dictionary
-  - popular query dictionary
-  - zero-hit keyword clusters
-- 季節予測:
-  - existing SeasonalForecaster parameters snapshot
-
-artifact は MongoDB に保存する。
-
-`model_versions` に追加:
-
-- `artifactUri` または `artifactJson`
-- `trainingDataRangeStart`
-- `trainingDataRangeEnd`
-- `metrics`
-- `activatedAt`
-- `createdBy`
-
-#### 状態遷移
-
-- `QUEUED`
-- `RUNNING`
-- `SUCCEEDED`
-- `FAILED`
-- `CANCELLED`
-
-### 実装ステップ
-
-1. `ModelTrainingJobRunner` を作る。
-2. `trainModel` は `QUEUED` で保存し、非同期 executor または scheduler が拾う。
-3. model type ごとに trainer を分ける。
-4. 成功時に `ModelVersion` を作成。
-5. `deployModel` は同 modelType の active version を排他更新する。
-6. `getModelPerformance` は保存済み metrics を返す。
-
-### テスト
-
-- training lifecycle: QUEUED -> RUNNING -> SUCCEEDED。
-- 失敗時 FAILED と error message。
-- deploy activeImmediately で旧 version が inactive。
-- performance が空 Map ではなく metrics を返す。
-
-## 7. AI Analytics API の暫定値解消
-
-### 該当箇所
-
-- `ai-support-service/src/main/java/com/example/skishop/ai/service/AnalyticsService.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/controller/AnalyticsController.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/model/BehaviorMetrics.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/model/DemandForecast.java`
-- `ai-support-service/src/main/java/com/example/skishop/ai/model/UserProfile.java`
-- `frontend/src/app/api/admin/analytics/route.ts`
-- `frontend/src/app/api/admin/analytics/report/route.ts`
-
-### 現状
-
-`AnalyticsService` は一部で repository の実データを読んでいるが、以下は暫定値である。
-
-- `getProductPerformance`: views / purchases / conversionRate / averageRating が固定 0。
-- `getTrends`: 空リスト。
-- `getCustomerSegments`: 空リスト。
-- `generateCustomReport`: `status=generated` のみ。
-- `getDashboard`: totalUsers / totalSearches / totalRecommendations / activeChatSessions が固定 0。
-
-### 問題
-
-- `/api/v1/analytics/**` を利用する管理画面や外部連携が、実態と異なる 0 値を表示する。
-- AI Analyzer の dedicated service / ToolFunctions と、AnalyticsService の API で数値が一致しない。
-- 「データが本当に 0」なのか「未実装で 0」なのか区別できない。
-
-### 本来の実装方針
-
-AnalyticsService は AI Support 内の MongoDB だけで完結させず、sales / inventory / user / recommendation / chat の各データを集約する。
-
-#### API ごとの実データ接続案
-
-| API | 接続先 | 実装方針 |
-| --- | --- | --- |
-| product-performance | sales order_items + inventory product + recommendation click | views, purchases, revenue, conversionRate |
-| trends | sales trends + search popular keywords + recommendation conversions | category / timeframe 別 trend |
-| customer-segments | user profile + purchase history + point tier | tier, spend band, skill preference |
-| custom-report | reportType ごとの query plan | report id と集計結果、生成条件を保存 |
-| dashboard | chat sessions, recommendations, search logs, sales summary | AI/EC 複合 KPI |
-
-### データ不足時のレスポンス方針
-
-固定 0 を返す代わりに、以下を DTO に含める。
-
-- `dataAvailable`
-- `partial`
-- `missingSources`
-- `generatedAt`
-
-本当に 0 件の場合は `dataAvailable=true` かつ値 0。取得失敗や未接続の場合は `dataAvailable=false` または `partial=true` とする。
-
-### 実装ステップ
-
-1. Analytics DTO に data availability metadata を追加する。
-2. sales / inventory / user / ai-support 内 repository への client/adapter を追加する。
-3. product performance を最初に実データ化する。
-4. dashboard を fixed 0 から実 KPI に置き換える。
-5. custom report は reportType ごとの generator に分割する。
-6. 管理画面に partial / unavailable 表示を追加する。
-
-### テスト
-
-- 各 upstream が成功した場合に実値が返る。
-- upstream 一部失敗時に partial=true になる。
-- データ 0 件と取得失敗を区別する。
-- dashboard API が固定 0 を返さない。
-
-## 8. Kafka / Outbox / イベント配送保証
-
-### 該当箇所
-
-- `common-lib/src/main/java/com/example/skishop/common/event/EventPublisherAutoConfiguration.java`
-- `common-lib/src/main/java/com/example/skishop/common/event/SpringCloudStreamEventPublisher.java`
-- `common-lib/src/main/java/com/example/skishop/common/event/OutboxEventPublisher.java`
-- 各サービスの `V*_create_event_outbox_table.sql`
-- `user-management-service/src/main/java/com/example/skishop/usermanagement/consumer/UserEventConsumer.java`
-- `mailsend-service/src/main/java/com/example/skishop/mailsend/consumer/MailEventConsumer.java`
-
-### 現状
-
-Kafka publisher は仮想スレッドで非同期送信する best-effort 実装である。送信失敗は warn ログで、業務トランザクションの rollback や後続 retry にはつながらない。Outbox 実装と migration は存在するが、全サービスで業務イベントに必ず使われる設計にはなっていない。
-
-### 問題
-
-- ユーザー登録成功後にイベント送信失敗すると、メール送信や user-management 同期が欠落する。
-- 注文作成、決済成功、ポイント付与などの重要イベントが失われる可能性がある。
-- Kafka 障害時の再送・DLQ・運用確認が弱い。
-- イベント consumer の冪等性がサービスごとにばらつく。
-
-### 本来の実装方針
-
-業務イベントは Transactional Outbox を標準にする。
-
-#### Publisher 方針
-
-- サービス内トランザクションで domain entity と `event_outbox` を同時 commit。
-- 別プロセスまたは scheduler が outbox を Kafka に publish。
-- publish 成功後に `published_at`, `status=SENT`。
-- 失敗時は retry count / next_retry_at を更新。
-- retry 上限超過で `FAILED` にし、DLQ または運用 alert。
-
-#### outbox table 推奨 schema
-
-- `id`
-- `event_id`
-- `event_type`
-- `aggregate_type`
-- `aggregate_id`
-- `producer`
-- `payload`
-- `headers`
-- `correlation_id`
-- `status`
-- `retry_count`
-- `next_retry_at`
-- `created_at`
-- `published_at`
-- `last_error`
-
-#### consumer 冪等性
-
-各 consumer 側に `processed_events` table を持つ。
-
-- `event_id`
-- `event_type`
-- `processed_at`
-- `status`
-
-同じ event_id は再処理しない。処理中に失敗した場合は Kafka retry / DLQ の設計に委ねる。
-
-### 実装ステップ
-
-1. `skishop.event.mode=outbox|kafka|logging` を明示的に導入。
-2. P0 イベントは outbox に統一。
-3. `OutboxRelay` scheduler を common-lib または各サービスに導入。
-4. retry / DLQ / metrics を追加。
-5. consumer idempotency helper を common-lib に追加。
-6. Grafana に outbox backlog / failed events を表示。
-
-### テスト
-
-- DB commit と outbox insert が同一 transaction。
-- Kafka 停止中でも業務処理は成功し、outbox に残る。
-- Kafka 復旧後に relay が送信する。
-- 同一 event を consumer が二重処理しない。
-
-## 9. Agent Cart / Inventory / Coupon の業務整合性
-
-### 該当箇所
-
-- `ai-agent-services/orchestrator-agent/src/main/java/com/example/skishop/agent/orchestrator/service/OrchestratorAgentService.java`
-- `payment-cart-service/src/main/java/com/example/skishop/payment/service/CartBuildService.java`
-- `inventory-management-service/src/main/java/com/example/skishop/inventory/service/ProductService.java`
-- `coupon-service/src/main/java/com/example/skishop/coupon/service/CouponService.java`
-
-### 現状
-
-Orchestrator は 8 step で、装備推薦、在庫確認、価格計算、クーポン最適化、カート構築、在庫予約まで進める設計である。`CartBuildService` は実カートへ追加するが best-effort で、失敗しても preview response は返す。
-
-### 問題
-
-- カート追加成功、在庫予約失敗のような部分成功が起きる。
-- dynamic price とカート価格が後でズレる可能性がある。
-- coupon optimization が実クーポン予約・消込とつながっていない可能性がある。
-- 在庫予約 TTL、解放、注文確定時の消込が一貫していない。
-
-### 本来の実装方針
-
-Agent の購入提案は「見積もり」と「確定」を分ける。
-
-#### Quote model
-
-`agent_quotes` を payment-cart-service または orchestrator 側に持つ。
-
-- `quote_id`
-- `user_id`
-- `items`
-- `dynamic_prices`
-- `coupon_plan`
-- `point_plan`
-- `inventory_reservations`
-- `subtotal`
-- `discount`
-- `total`
-- `expires_at`
-- `status` (`DRAFT`, `RESERVED`, `COMMITTED`, `EXPIRED`, `CANCELLED`)
-
-#### Flow
-
-1. Orchestrator creates quote。
-2. inventory reservation は quoteId 紐づけ。
-3. cart build は quote を参照して実カートを置き換える、または quote から checkout に進む。
-4. checkout 時に quote の有効期限、価格、在庫予約、クーポンを再検証。
-5. payment success で quote committed。
-6. payment fail / timeout で reservation release。
-
-### 実装ステップ
-
-1. `BuildCartResponse.status` の意味を UI で明示する。
-2. Quote API を追加する。
-3. inventory reservation に TTL と quoteId を入れる。
-4. coupon optimization を coupon reservation に接続する。
-5. checkout は quoteId から決済 intent を作る。
-6. quote expiration job を追加する。
-
-### テスト
-
-- reservation timeout で在庫が解放される。
-- quote expired 後は checkout 不可。
-- dynamic price が quote 内で固定される。
-- payment success で quote committed。
-- payment fail で reservation release。
-
-## 10. Dead Stock Coupon 連携
-
-### 該当箇所
-
-- `ai-support-service/src/main/java/com/example/skishop/ai/service/DeadStockService.java`
-- `coupon-service/src/main/resources/db/migration/V5__create_dead_stock_actions.sql`
-- `coupon-service/src/main/java/com/example/skishop/coupon/controller/CouponController.java`
-- `coupon-service/src/main/java/com/example/skishop/coupon/controller/InternalCouponController.java`
-
-### 現状
-
-DeadStockService は coupon-service に `/api/v1/coupons` と `/api/v1/dead-stock-actions` を呼ぼうとしている。一方、coupon-service 側の公開 controller 一覧を見る限り、dead-stock-actions の dedicated endpoint は確認できない。migration はあるため DB は用意されているが、API 実装が不足している可能性が高い。
-
-また、`/api/v1/coupons` の通常 create coupon は campaignId や code を要求する設計であり、DeadStockService が送る `sku`, `discountPct`, `type` とは schema が合わない可能性がある。
-
-### 問題
-
-- Dead stock 画面からクーポン発行すると coupon-service 側で 400/500 になる可能性がある。
-- 重複チェック API がない場合、安全側で常に拒否される。
-- dead_stock_actions に監査ログが残らない。
-
-### 本来の実装方針
-
-coupon-service に Dead Stock 専用 API を追加する。
-
-#### API
-
-- `GET /api/v1/dead-stock-actions?sku={sku}&days=30`
-- `POST /api/v1/dead-stock-actions`
-- `POST /api/v1/coupons/dead-stock`
-
-`POST /api/v1/coupons/dead-stock` は以下を受け取る。
-
-- `sku`
-- `discountPct`
-- `memo`
-- `approverUserId`
-- `expiresAt`
-
-内部で campaign を自動作成または dedicated campaign を取得し、実 coupon code を生成する。
-
-### 実装ステップ
-
-1. `DeadStockAction` entity / repository / controller を追加。
-2. `DeadStockCouponRequest` を追加。
-3. 30 日重複チェックを coupon-service 側で transaction 内に実装。
-4. coupon 作成と action 記録を同一 transaction にする。
-5. ai-support-service の DeadStockService は専用 API だけを呼ぶようにする。
-
-### テスト
-
-- 同一 SKU 30 日以内は 409。
-- discountPct は 0-40 に clip。
-- coupon と dead_stock_actions が同時に保存される。
-- action 保存失敗時に coupon だけ残らない。
-
-## 11. フロントエンドの暫定箇所
-
-### 該当箇所
-
-- `frontend/src/app/(ec)/catalog/[categorySlug]/page.tsx`
-- `frontend/src/components/layout/ec-footer.tsx`
-- `frontend/src/app/api/admin/dashboard/route.ts`
-- 各 `frontend/src/app/api/**/route.ts`
-- `frontend/src/app/(ec)/checkout/page.tsx`
-- `frontend/src/app/(ec)/agent/page.tsx`
-- `frontend/src/lib/orchestrator-client.ts`
-- `frontend/src/hooks/use-agent-stream.ts`
-- `frontend/src/app/(admin)/admin/ai/page.tsx`
-- `frontend/src/app/(admin)/admin/analytics/page.tsx`
-- `frontend/src/components/admin/ai-analyzer/*`
-- `frontend/src/types/api/*.ts`
-
-### 現状
-
-確認できた TODO / fallback:
-
-- カテゴリページに `TODO: fetch category name from API`
-- footer に i18n TODO
-- admin dashboard BFF に null fallback が複数存在
-- 各 route が `API_GATEWAY_URL || http://127.0.0.1:8090` を直接持つ箇所が多い
-- payment BFF の一部が `PAYMENT_SERVICE_URL` で payment-cart-service を直接呼んでおり、Gateway / JWT / 共通エラー処理を迂回している。
-- admin payments BFF が `/api/v1/admin/payments/**` を呼んでいるが、payment-cart-service の controller は `/api/v1/payments/**` であるため、現状のままだと 404 になる可能性が高い。
-- admin AI model BFF が `/api/v1/ai/models/**` を呼んでいるが、Gateway の RouteConfig は `/api/v1/models/**` を ai-support-service へルーティングするため、パス不整合がある。
-- `frontend/src/app/(admin)/admin/ai/page.tsx` は backend 呼び出しに失敗すると `MOCK_MODELS` を表示し、training progress もフロント側乱数で進めている。
-- `frontend/src/types/api/cart.ts` の `PaymentResponse.status` が `PROCESSING` / `COMPLETED` を含む一方、backend の現行 PaymentStatus は `PENDING` / `AUTHORIZED` / `CAPTURED` / `FAILED` / `REFUNDED` で不一致。
-- checkout は `payment intent -> process payment -> create order` の順で、決済成功後に注文作成へ失敗する不整合が起きうる。将来の Webhook / Outbox 実装後は flow を見直す必要がある。
-- Agent 画面は `CartBuildService.persistToUserCart` 前提で「すでにカートに追加されています」と表示しているが、backend は `CONFIRMED_PARTIAL` / `PREVIEW_ONLY` を返す可能性がある。quote / cart persistence status を UI が厳密に扱えていない。
-- Analytics API に `dataAvailable` / `partial` / `missingSources` を追加する計画に対し、admin analytics / dashboard 画面は現状 null fallback 中心で、partial/unavailable を明示する UI が不足している。
-
-### 本来の実装方針
-
-- BFF 共通 gateway client を使う。
-- null fallback ではなく、`data`, `error`, `partial` を明示する。
-- 管理画面では一部カードの取得失敗をカード単位で表示する。
-- カテゴリ名は categories API から取得し、metadata / breadcrumb に反映する。
-- i18n は `locales/ja.json`, `locales/en.json` に寄せる。
-
-### バックエンド修正計画に伴うフロントエンド影響
-
-| バックエンド計画 | 影響するフロント | 必要な対応 |
-| --- | --- | --- |
-| Payment Gateway / Webhook | checkout, payment BFF, admin payment routes, payment types | 決済状態を PSP 非同期前提にし、status / nextAction / webhook反映待ちを扱う |
-| Quote model | agent page, checkout, cart, orchestrator types | quoteId / expiresAt / status を表示し、quote から checkout へ遷移 |
-| User Profile 実データ化 | agent page, mypage, auth/session | tier / point / profileCompleteness / warnings を表示可能にする |
-| AI 検索実商品化 | search page, search-bar, search BFF, product card | semantic search response と inventory product response を統一 |
-| AI 推薦実商品化 | personalized/trending sections, dashboard home | 存在商品だけを表示し、impression/click/conversion を送る |
-| AI Analyzer Tool 実データ化 | admin ai-analyzer components | dataUnavailable / partial / action proposal を UI に出す |
-| AnalyticsService 実データ化 | admin analytics, admin dashboard | fixed 0 前提をやめ、partial/unavailable metadata に対応 |
-| Model Management 実装 | admin AI page, model BFF | mock model fallback を撤去し、training job lifecycle を poll |
-| Dead Stock Coupon API | DeadStockIssueModal, BFF | approverUserId / expiresAt / audit result / duplicate reason を扱う |
-
-### フロントエンド修正計画
-
-#### 11.1 BFF 共通化と API パス不整合の修正
-
-現状、`frontend/src/lib/gateway-fetch.ts` に `proxyToGateway` がある一方で、多くの API route が独自 `safeFetch` と `API_GATEWAY_URL` を持っている。まず BFF route は原則 `proxyToGateway` に寄せる。
-
-修正対象:
-
-- `frontend/src/app/api/admin/analytics/route.ts`
-- `frontend/src/app/api/admin/dashboard/route.ts`
-- `frontend/src/app/api/admin/payments/history/route.ts`
-- `frontend/src/app/api/admin/payments/[id]/refund/route.ts`
-- `frontend/src/app/api/admin/ai/models/**/route.ts`
-- `frontend/src/app/api/payments/intent/route.ts`
-- `frontend/src/app/api/payments/[id]/process/route.ts`
-- `frontend/src/app/api/search/route.ts`
-- `frontend/src/app/api/search/autocomplete/route.ts`
-
-修正内容:
-
-- payment 系 BFF は `PAYMENT_SERVICE_URL` 直呼びをやめ、Gateway の `/api/v1/payments/**` 経由に統一する。
-- admin payment history は backend 実装に合わせ、`/api/v1/payments/history?userId=...` または管理者用 API が追加されるなら `/api/v1/payments/admin/history` のように backend と route を合わせる。
-- admin refund は `/api/v1/payments/{paymentId}/refund` に合わせる。`/api/v1/admin/payments/{id}/refund` は backend 側に実装されない限り使わない。
-- admin AI models は `/api/v1/ai/models/**` ではなく、Gateway route に合わせて `/api/v1/models/**` を呼ぶ。
-- BFF は upstream が null / 空 body / 非 JSON を返しても、画面が壊れない typed response を返す。
-- response に `upstreamStatus`, `partial`, `missingSources` を含められるよう共通型を用意する。
-
-#### 11.2 決済・Checkout UI
-
-Payment Gateway / Webhook 実装後は、決済は同期的に `CAPTURED` で完了するとは限らない。
-
-必要な型変更:
-
-```ts
-type PaymentStatus =
-  | 'PENDING'
-  | 'REQUIRES_ACTION'
-  | 'AUTHORIZED'
-  | 'CAPTURED'
-  | 'FAILED'
-  | 'CANCELLED'
-  | 'PARTIALLY_REFUNDED'
-  | 'REFUNDED';
-
-interface PaymentResponse {
-  id: string;
-  userId: string;
-  orderId?: string | null;
-  paymentIntentId: string;
-  status: PaymentStatus;
-  amount: number;
-  currency: string;
-  paymentMethod: string;
-  gatewayProvider?: string | null;
-  nextAction?: PaymentNextAction | null;
-  refundedAmount: number;
-  completedAt?: string | null;
-  createdAt: string;
-}
-```
-
-Checkout flow は以下へ変更する。
-
-1. cart または quote から order draft を作る。
-2. orderId 付きで payment intent を作る。
-3. PSP の `clientSecret` / `redirectUrl` / `requiresAction` を処理する。
-4. `CAPTURED` 即時完了なら complete へ遷移。
-5. `PENDING` / `AUTHORIZED` / `REQUIRES_ACTION` なら `/checkout/processing?paymentId=...&orderId=...` を表示する。
-6. processing 画面で payment / order status を poll する。
-7. Webhook で order が PAID になったら complete へ遷移。
-8. 失敗時は retry / payment method change / cart に戻る導線を出す。
-
-注意:
-
-- 現在の checkout は payment success 後に order 作成しているため、決済成功・注文失敗の不整合が起きる。バックエンド側の最終設計に合わせ、注文 draft -> payment -> webhook confirm の順に変更する。
-- `Idempotency-Key` は payment intent / process / order draft で同一キーの使い回し可否を backend と合わせる。通常は operation ごとに別 key、checkout attempt id で相関する。
-- 管理画面の payment history は `CAPTURED`, `FAILED`, `PARTIALLY_REFUNDED` など backend status をそのまま badge 表示する。
-
-#### 11.3 Agent / Quote UI
-
-Quote model 導入後、Agent 画面は「カートへ自動追加済み」前提をやめる。
-
-必要な型変更:
-
-```ts
-interface QuoteSummary {
-  quoteId: string;
-  orderId?: string | null;
-  status: 'DRAFT' | 'RESERVED' | 'COMMITTED' | 'EXPIRED' | 'CANCELLED';
-  cartPersistenceStatus?: 'CONFIRMED' | 'CONFIRMED_PARTIAL' | 'PREVIEW_ONLY';
-  items: QuoteItem[];
-  subtotal: number;
-  couponDiscount: number;
-  pointDiscount: number;
-  totalAmount: number;
-  reservationId?: string | null;
-  reservationExpiresAt?: string | null;
-  warnings?: string[];
-}
-```
-
-UI 方針:
-
-- `CONFIRMED`: 「カートに追加済み」と表示。
-- `CONFIRMED_PARTIAL`: 追加できた商品と失敗した商品を分けて表示し、「カートを確認」導線を出す。
-- `PREVIEW_ONLY`: 「見積もりのみ。購入するにはカートへ追加してください」と表示し、明示的な `カートに追加` ボタンを出す。
-- `quote.status=EXPIRED`: checkout ボタンを disabled にし、再見積もりを促す。
-- `reservationExpiresAt` までの残り時間を表示する。
-- `profileCompleteness` / `warnings` が Orchestrator response に追加された場合、推奨の信頼度・不足データを控えめに表示する。
-
-#### 11.4 Search / Recommendation UI
-
-AI 検索・推薦を実商品化する場合、UI は「AI SearchResponse」と「ProductResponse」を変換する境界を明確にする。
-
-修正内容:
-
-- `frontend/src/types/api/ai.ts` の `SearchResult` に `sku`, `imageUrl`, `categoryId`, `inStock`, `regularPrice`, `salePrice`, `score`, `reason` を追加する。
-- `/api/search` BFF は inventory search response を受け取り、`results`, `totalHits`, `query`, `enhancedQuery`, `facets`, `source` を返す。
-- 検索画面は 0 件時に「該当商品なし」と「ゼロヒット記録済み」を区別せず、ユーザーには自然な代替導線を出す。
-- autocomplete は単純な product search だけでなく、将来的に `/api/v1/search/autocomplete` が実装されたらそちらを優先する。
-- `personalized-section` / `trending-section` は推薦 API が返した productId を batch product API で検証し、存在しない商品は表示しない。
-- 推薦カード表示時に impression、クリック時に click、購入完了時に conversion を送る。
-
-#### 11.5 Admin Analytics / Dashboard UI
-
-AnalyticsService と AI Analyzer が `dataAvailable`, `partial`, `missingSources` を返すようになったら、画面は以下に対応する。
-
-- dashboard 全体ではなくカード単位で degraded state を出す。
-- 値が 0 の場合は通常表示、`dataAvailable=false` の場合は `データ取得不可` 表示。
-- `missingSources` がある場合は管理者向けに「sales-service 取得失敗」などの短い注記を出す。
-- 再試行ボタンはカード単位にする。
-- `/admin/analytics` の sales / users / search タブで partial badge を表示する。
-- CSV / report export 時は partial report であることを header metadata に含める。
-
-#### 11.6 Admin AI Model UI
-
-Model Management 実装後、`MOCK_MODELS` fallback とフロント側乱数 progress は撤去する。
-
-修正内容:
-
-- `/api/admin/ai/models` は backend の `/api/v1/models/versions?modelType=...` など実 API に合わせる。
-- train 開始後は `trainingId` を受け取り、`/api/admin/ai/models/train/{trainingId}` または backend の status API を poll する。
-- status は backend と合わせて `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `ACTIVE` などにする。
-- progress は backend が返す場合のみ表示し、なければ indeterminate progress にする。
-- deploy は `modelVersionId` と `activateImmediately` を body に含める。
-- performance は空 Map ではなく metrics を表示し、未取得なら unavailable として表示する。
-
-#### 11.7 Dead Stock Coupon UI
-
-Dead Stock 専用 coupon API 追加後、`DeadStockIssueModal` は以下を送る。
-
-- `sku`
-- `discountPct`
-- `memo`
-- `approverUserId`
-- `expiresAt`
-
-BFF は session user id を `approverUserId` として補完する。レスポンスには以下を期待する。
+必須 field:
 
 - `couponId`
 - `couponCode`
-- `actualPct`
-- `aiSuggestedPct`
-- `duplicateBlocked`
-- `auditActionId`
-
-UI は成功時に coupon code と audit id を表示する。409 の場合は backend の reason / existingActionCreatedAt を表示し、単なる固定文言だけにしない。
-
-#### 11.8 型とテスト
-
-追加・修正する型:
-
-- `PaymentStatus`
-- `PaymentWebhookEvent`
-- `RefundResponse`
-- `QuoteSummary`
-- `ProfileCompleteness`
-- `DataAvailability`
-- `AnalyticsResponseMeta`
-- `ModelTrainingJob`
-- `ModelVersion`
-- `RecommendationImpressionRequest`
-- `SearchFacet`
-
-テスト方針:
+- `couponType`
+- `discountType`
+- `discountValue`
+- `minimumOrder`
+- `maximumDiscount`
+- `expiresAt`
+- `usageLimit`
+- `usedCount`
+- `usable`
 
-- BFF route unit test: backend path が正しいこと。
-- checkout flow test: `REQUIRES_ACTION`, `PENDING`, `CAPTURED`, `FAILED`。
-- agent page test: `CONFIRMED_PARTIAL` / `PREVIEW_ONLY` 表示。
-- admin analytics test: partial / missingSources 表示。
-- admin AI model test: mock fallback ではなく job polling。
-- search test: 0 件、実商品あり、autocomplete。
-- dead stock modal test: 409 reason、success coupon code。
+4. 期限切れや使用済みの場合は `usable=false` とし、可能なら `unusableReason` を追加する。
+5. frontend の coupon validate route が 404 を受け取った場合、ユーザー向けには「クーポンが見つかりません」と表示する。
 
-### 実装ステップ
+### テスト
 
-1. `frontend/src/lib/gateway-fetch.ts` または `api-client.ts` に BFF 共通処理を集約。
-2. admin dashboard の各 fetch に typed fallback を導入。
-3. category slug -> category API の変換を実装。
-4. footer 文言を locale に移動。
-5. E2E で部分失敗表示を確認。
-6. payment / admin payment / admin AI models の BFF path 不整合を修正する。
-7. backend の新 DTO に合わせて `frontend/src/types/api/*.ts` と `orchestrator-client.ts` を更新する。
-8. checkout processing 画面と quote checkout flow を追加する。
-9. admin AI page の mock fallback と乱数 progress を撤去し、training job polling に変更する。
+- 存在する coupon は DB 値を返す。
+- 未存在 coupon は dummy ID を返さない。
+- 期限切れ coupon は `usable=false`。
+- 使用上限到達 coupon は `usable=false`。
+- `discountRate` と `discountAmount` のような派生 field を返す場合も、DB 値から計算されること。
 
-## 12. 横断的な観測性
+### 完了条件
 
-### 必要なメトリクス
+- `dummy-` 文字列が main code から消える。
+- 未存在クーポンで割引が発生しない。
 
-決済:
+## Phase 3: Frontend search semantic / feedback route の接続
 
-- payment_intent_created_total
-- payment_captured_total
-- payment_failed_total
-- payment_webhook_duplicate_total
-- payment_webhook_failed_total
-- refund_processed_total
+### 対象ファイル
 
-Outbox:
+- `frontend/src/app/(ec)/search/page.tsx`
+- `frontend/src/app/api/search/semantic/route.ts` 新規
+- `frontend/src/app/api/search/feedback/route.ts` 新規
+- `frontend/src/app/api/search/route.ts`
+- `ai-support-service/src/main/java/com/example/skishop/ai/controller/SearchController.java`
+- `ai-support-service/src/main/java/com/example/skishop/ai/dto/SearchFeedbackRequest.java`
+- `ai-support-service/src/main/java/com/example/skishop/ai/service/SearchService.java`
+- `ai-support-service/src/main/java/com/example/skishop/ai/model/SearchFeedback.java` 新規候補
+- `ai-support-service/src/main/java/com/example/skishop/ai/repository/SearchFeedbackRepository.java` 新規候補
+- `frontend/src/__tests__/**` 新規または既存テスト追加
 
-- outbox_pending_count
-- outbox_failed_count
-- outbox_publish_duration
-- outbox_retry_total
+### 修正方針
 
-AI:
+frontend が呼んでいる BFF route を実装し、既存の ai-support-service API へ proxy する。
 
-- ai_tool_call_total
-- ai_tool_call_failed_total
-- ai_tool_data_unavailable_total
-- llm_tokens_in_total
-- llm_tokens_out_total
-- llm_cost_estimate_usd
-- ai_recommendation_impression_total
-- ai_recommendation_click_total
-- ai_recommendation_conversion_total
+既存 backend API:
 
-Agent:
+- `POST /api/v1/search/semantic`
+- `POST /api/v1/search/feedback`
 
-- orchestrator_step_duration
-- orchestrator_step_failed_total
-- quote_created_total
-- quote_committed_total
-- quote_expired_total
+api-gateway は `/api/v1/search/**` を ai-support-service に route 済みなので、frontend BFF は `API_GATEWAY_URL` へ接続すればよい。
 
-### ログ
+semantic fallback で `SKU-SEM-*` や `stockQuantity: 10` を生成する実装は削除し、backend から返った inventory 由来 product fields だけを使う。
 
-全サービスで以下を揃える。
+検索 feedback は BFF route 欠落だけではなく、backend 側もログ出力と receipt 返却だけで終わっている。`SearchFeedbackRequest` の実 field は `query`, `resultId`, `relevant`, `userId` なので、frontend の `{ query, positive }` は `relevant` に変換し、可能ならクリック/表示された `resultId` も送る。
 
-- `correlationId`
-- `userId` は必要に応じて hash 化
-- `eventId`
-- `orderId`
-- `paymentId`
-- `quoteId`
-- `agentSessionId`
+### 実装手順
 
-## 13. 推奨実装ロードマップ
+1. `frontend/src/app/api/search/semantic/route.ts` を追加する。
 
-### Milestone 1: 決済とイベント保証
+処理内容:
 
-目的: EC の中核業務を壊れにくくする。
+- request body を JSON parse。
+- `query` が空なら 400。
+- `POST ${API_GATEWAY_URL}/api/v1/search/semantic` へ body を転送。
+- `Authorization` が必要な構成なら `getServerSession(authOptions)` の access token を付与する。
+- upstream status をそのまま返す。
+- upstream が失敗した場合は 502 を返し、空商品を捏造しない。
 
-実施内容:
+2. `frontend/src/app/api/search/feedback/route.ts` を追加する。
 
-- PaymentGatewayClient 抽象化
-- Simulated gateway の切り出し
-- Webhook event table
-- Webhook 冪等処理
-- Payment status transition
-- Outbox relay
-- PaymentCaptured -> Order/Inventory/Point/Coupon 連携
+処理内容:
 
-完了条件:
+- body: `{ query, positive, userId?, sessionId? }`
+- ai-support-service の `SearchFeedbackRequest(query, resultId, relevant, userId)` に合わせて field を変換する。
+- `positive=true` は `relevant=true`、`positive=false` は `relevant=false` として送る。
+- 現状の search page が query 単位 feedback しか持たない場合は、`resultId=null` を許容するか、UI を結果単位 feedback に変更して productId / resultId を送る。
+- backend の `SearchService.recordSearchFeedback()` はログだけでなく、`SearchFeedback` collection/table または既存 `SearchAnalytics` の feedback field に永続化する。
+- analytics 集計では `relevant=false` の query / resultId を zero-hit 改善や synonym 改善に利用できる形にする。
 
-- 決済成功から注文確定まで E2E で一貫する。
-- Kafka 停止中でも outbox にイベントが残り、復旧後に送信される。
-- Webhook 重複で二重処理されない。
+3. `search/page.tsx` の semantic fallback mapping を修正する。
 
-### Milestone 2: Orchestrator personalization
+- `sku` は backend result の `sku` がない場合だけ productId を使う。
+- `stockQuantity` / `availableQuantity` は backend result の `inStock` または在庫 field から決める。固定 10 は使わない。
+- `categoryId` は backend result の値を使う。空 fallback は最後の手段にする。
 
-目的: AI 購入支援が実ユーザー文脈を使えるようにする。
+4. feedback 送信失敗時は握りつぶしのみではなく、内部状態に失敗を保存するか、少なくとも console ではなく UI の再試行可能状態にする。
 
-実施内容:
+### テスト
 
-- UserProfileResponse 拡張
-- point / sales / coupon internal summary API
-- user-management-service で profile aggregation
-- Orchestrator prompt 更新
-- Quote model の導入検討
+- `/api/search/semantic` が gateway の `/api/v1/search/semantic` に body を転送する。
+- gateway 502 時に frontend は架空商品を表示しない。
+- semantic result の SKU / 在庫 / category は backend 応答から作られる。
+- `/api/search/feedback` が正しい DTO で backend へ転送される。
+- feedback が ai-support-service に永続化され、ログだけで終わらない。
+- feedback route が存在しないことによる 404 がなくなる。
 
-完了条件:
+### 完了条件
 
-- Orchestrator が実 tier / point / purchasedCategories を受け取る。
-- 一部サービス障害時も fallback profile で動く。
+- `frontend/src/app/(ec)/search/page.tsx` から `SKU-SEM-*` と固定在庫 10 が消える。
+- `frontend/src/app/api/search/semantic/route.ts` と `frontend/src/app/api/search/feedback/route.ts` が存在する。
+- 検索 feedback が 404 にならない。
+- `SearchService.recordSearchFeedback()` が `UUID.randomUUID()` receipt のみで完了せず、feedback を後続分析に使える形で保存する。
 
-### Milestone 3: AI 検索・推薦の実商品化
+## Phase 4: Catalog category name TODO と sort 空実装の修正
 
-目的: 顧客向け AI 機能から固定値をなくす。
+### 対象ファイル
 
-実施内容:
+- `frontend/src/app/(ec)/catalog/[categorySlug]/page.tsx`
+- `frontend/src/app/api/categories/[id]/route.ts` 新規候補
+- `frontend/src/app/api/admin/categories/[id]/route.ts` 既存参考
+- `inventory-management-service/src/main/java/com/example/skishop/inventory/controller/CategoryController.java`
 
-- SearchService から固定検索結果を削除。
-- inventory search に接続。
-- RecommendationService を候補生成 + scoring + LLM reason に分離。
-- click / conversion feedback を保存。
+### 修正方針
 
-完了条件:
+カテゴリ名は inventory-management-service の Category API から取得する。sort Select は URL query を更新し、`fetchProducts()` が再実行されるようにする。
 
-- 存在する商品だけが推薦・検索に出る。
-- 在庫切れ商品を除外できる。
-- zero-hit log が実検索から作られる。
+既存 backend には `CategoryService.getCategoryById(String categoryId)` があり、CategoryController も存在する。frontend の EC 側に公開用 BFF がなければ追加する。
 
-### Milestone 4: AI Analyzer 実データ化
+### 実装手順
 
-目的: 管理者 AI が本当に業務判断に使える数値を返す。
+1. EC 用 BFF `/api/categories/[id]` を追加する。admin route と違い、公開でよいか認証要否を確認する。
+2. `CategoryContent` の `categoryName` state を実際に更新する。
+3. `categorySlug` 変更時にカテゴリ取得を実行する。
+4. 取得失敗時は `categorySlug` を表示し、TODO コメントは削除する。
+5. `Select` の `onValueChange` で router に `?sort=<value>` を反映する。
+6. 現在 `sort` query を fetch に渡しているため、URL 更新後に既存 `useEffect` で再取得される。
 
-実施内容:
+### テスト
 
-- AnalyticsToolFunctions の空実装を実データ接続。
-- DeadStock / ZeroHit の専用サービスと Tool の結果を統一。
-- AnalyticsService の product-performance / trends / dashboard 固定値を実データ化。
-- dataUnavailable を DTO で表現。
-- dashboard / admin AI UI の部分失敗表示。
+- category API 成功時に breadcrumb / H1 がカテゴリ名になる。
+- category API 失敗時は slug 表示で落ちない。
+- sort 変更で URL query が更新され、商品 API の sort param が変わる。
 
-完了条件:
+### 完了条件
 
-- AI Analyzer が Tool 経由で実売上、在庫、販売速度、ゼロヒットを返す。
-- 空データと取得失敗を区別できる。
-- `/api/v1/analytics/**` が固定 0 / 空配列中心ではなく、実集計または partial/unavailable metadata を返す。
+- `TODO: fetch category name from API` が消える。
+- `onValueChange={() => {}}` が消える。
 
-### Milestone 5: Model Management と改善ループ
+## Phase 5: Admin AI 画面の MOCK_MODELS / random progress 廃止
 
-目的: AI 機能を改善可能な運用機能にする。
+### 対象ファイル
 
-実施内容:
+- `frontend/src/app/(admin)/admin/ai/page.tsx`
+- `frontend/src/app/api/admin/ai/models/route.ts`
+- `frontend/src/app/api/admin/ai/models/train/route.ts`
+- `frontend/src/app/api/admin/ai/models/status/[trainingId]/route.ts` 新規候補
+- `frontend/src/app/api/admin/ai/models/[id]/deploy/route.ts`
+- `frontend/src/app/api/admin/ai/models/[id]/route.ts`
+- `ai-support-service/src/main/java/com/example/skishop/ai/controller/ModelManagementController.java`
+- `ai-support-service/src/main/java/com/example/skishop/ai/service/ModelManagementService.java`
 
-- training job runner
-- model artifact 保存
-- model version active 切替
-- performance metrics
-- 推薦/検索で active model を参照
+### 修正方針
 
-完了条件:
+Admin AI BFF の呼び先を `/api/v1/models/**` に修正し、画面側は mock model へ fallback しない。学習進捗は `setInterval + Math.random()` ではなく、trainingId を使って `/api/v1/models/status/{trainingId}` を polling する。
 
-- training が RUNNING のまま止まらない。
-- version deploy に意味がある。
-- performance API が実 metrics を返す。
+backend に存在する endpoint は `POST /api/v1/models/train`, `GET /api/v1/models/status/{trainingId}`, `GET /api/v1/models/versions?modelType=...`, `POST /api/v1/models/deploy`, `GET /api/v1/models/performance` である。`GET /api/v1/models/{id}` や `POST /api/v1/models/{id}/deploy` は存在しないため、frontend BFF は削除または正しい aggregate route へ置換する。
 
-## 14. 受け入れ基準チェックリスト
+### 実装手順
 
-### 決済
+1. `frontend/src/app/api/admin/ai/models/route.ts` の呼び先を修正する。
 
-- [ ] Webhook 署名検証がある。
-- [ ] Webhook event id で冪等処理される。
-- [ ] Payment status の不正遷移が拒否される。
-- [ ] PaymentCaptured で注文が支払い済みになる。
-- [ ] PaymentFailed で在庫予約が解放される。
-- [ ] 部分返金が表現できる。
+現在:
 
-### AI 推薦・検索
+```text
+${API_GATEWAY_URL}/api/v1/ai/models
+```
 
-- [ ] 固定 productId が削除される。
-- [ ] 存在しない商品が返らない。
-- [ ] 在庫・販売停止ステータスが考慮される。
-- [ ] 検索ログが zero-hit 分析につながる。
-- [ ] LLM 障害時も deterministic fallback が返る。
+修正後候補:
 
-### User Profile / Orchestrator
+```text
+${API_GATEWAY_URL}/api/v1/models/versions?modelType=RECOMMENDATION
+```
 
-- [ ] tier / pointBalance が point-service 由来。
-- [ ] purchasedCategories が sales-service 由来。
-- [ ] availableCoupon summary が coupon-service 由来。
-- [ ] 部分失敗が warnings として返る。
+2. UI が複数 model type を一覧したい場合は、BFF で `RECOMMENDATION`, `SEARCH`, `DEMAND_FORECAST`, `FRAUD_DETECTION` などの modelType を順に取得して統合する。
+3. `MOCK_MODELS` を削除する。API 失敗時は `models=[]` とし、画面に「データ取得不可」を表示する。
+4. train API は `/api/v1/models/train` に修正する。
+5. `handleTrain()` は `TrainingJobResponse.trainingId` を保持する。
+6. Next.js BFF に `/api/admin/ai/models/status/[trainingId]` を追加し、`GET /api/v1/models/status/{trainingId}` へ proxy する。
+7. 5 秒ごとの polling で `/api/admin/ai/models/status/{trainingId}` を呼び、backend の status / metrics を表示する。
+8. deploy API は `/api/v1/models/deploy` に統一し、`modelVersionId` を request body に入れて送る。現在の `/api/v1/ai/models/{id}/deploy` 呼び出しは削除する。
+9. `/api/admin/ai/models/[id]` は backend に対応 endpoint がないため、一覧取得後の client-side lookup にするか、backend に `GET /api/v1/models/versions/{id}` を追加する別タスクにする。
+10. UI の `accuracy`, `precision`, `recall` は `ModelVersionResponse.performance` から取り出す。存在しない場合は `null` 表示にする。
 
-### AI Analyzer
+### テスト
 
-- [ ] ToolFunctions が空リスト・0 固定を返さない。
-- [ ] data unavailable と true zero を区別する。
-- [ ] DeadStock 専用 API と Tool 結果が一致する。
-- [ ] ZeroHit 専用 API と Tool 結果が一致する。
+- BFF が `/api/v1/models/versions` を呼ぶ。
+- API 失敗時に `MOCK_MODELS` が表示されない。
+- train 開始後、random progress ではなく status endpoint の応答で進捗が変わる。
+- deploy ボタンが `/api/v1/models/deploy` へ正しい body を送る。
+- frontend BFF から `/api/v1/ai/models` と `/api/v1/ai/models/{id}/deploy` への呼び出しが消える。
+- 存在しない model 個別 GET route を UI が前提にしない。
 
-### AI Analytics API
+### 完了条件
 
-- [ ] product-performance が views / purchases / conversionRate を実データから返す。
-- [ ] trends / customer-segments が空配列固定ではない。
-- [ ] dashboard が totalUsers / totalSearches / totalRecommendations / activeChatSessions を実集計する。
-- [ ] custom-report が reportType ごとの実集計結果を返す。
-- [ ] API レスポンスで true zero と data unavailable を区別できる。
+- `MOCK_MODELS` と `Math.random()` 進捗が削除される。
+- Admin AI 画面が実 model training / version データを表示する。
 
-### イベント
+## Phase 6: Admin Dashboard の固定 fallback データ廃止
 
-- [ ] P0 業務イベントが Outbox に保存される。
-- [ ] Outbox relay が retry する。
-- [ ] retry 上限超過が監視される。
-- [ ] consumer が event id で冪等。
+### 対象ファイル
 
-## 15. 変更時の注意
+- `frontend/src/app/(admin)/admin/dashboard/page.tsx`
+- `frontend/src/app/api/admin/dashboard/route.ts`
+- 関連 backend analytics endpoint
 
-- 未コミット変更が存在するため、実装前に `git status --short` で差分を確認する。
-- 既存の未コミット変更はユーザー作業の可能性があるため、勝手に revert しない。
-- payment / order / inventory / coupon / point は業務整合性が絡むため、単体修正ではなく E2E で検証する。
-- AI 機能は LLM の出力を業務事実として扱わない。productId、price、stock、discount、order amount は必ず DB / service 由来にする。
-- LLM が失敗しても、検索・推薦・分析の最低限の deterministic result は返せるようにする。
-- 管理者が意思決定する領域では、AI は「提案」に留め、承認者・実行値・監査ログを必ず残す。
+### 修正方針
+
+固定 KPI / 固定注文 / 固定低在庫を表示しない。管理画面で fake business data を表示すると運用判断を誤るため、取得不能時は degraded state として明示する。
+
+### 実装手順
+
+1. `fallbackKpi`, `fallbackSalesDaily`, `fallbackSalesWeekly`, `fallbackSalesMonthly`, `fallbackLowStock`, `fallbackOrders` を削除する。
+2. `DashboardPayload` に `availability` を追加する。
+
+例:
+
+```ts
+type Availability = {
+  analytics: 'available' | 'unavailable';
+  lowStock: 'available' | 'unavailable';
+  recentOrders: 'available' | 'unavailable';
+  recentUsers: 'available' | 'unavailable';
+  warnings: string[];
+};
+```
+
+3. BFF route は各 upstream の成功 / 失敗を `availability` に記録する。
+4. UI は unavailable な section に `DataUnavailableBadge` と空 state を表示する。
+5. chart は空配列の場合に「データがありません」を表示する。
+6. KPI は `0` を偽装表示するのではなく `-` または unavailable 表示にする。
+
+### テスト
+
+- 全 upstream 成功時は実データが表示される。
+- orders API 失敗時に固定 `ORD-20240301-*` が表示されない。
+- analytics API 失敗時に固定売上 `284000` が表示されない。
+- lowStock API 失敗時に固定 SKU が表示されない。
+
+### 完了条件
+
+- Admin Dashboard main code から `fallbackKpi`, `fallbackOrders` などの固定 business data が消える。
+- 取得不能時に fake data ではなく degraded state が表示される。
+
+## Phase 7: Admin Inventory 発注推奨の random 計算廃止
+
+### 対象ファイル
+
+- `frontend/src/app/(admin)/admin/inventory/page.tsx`
+- `frontend/src/app/api/admin/inventory/reorder-recommendations/route.ts` 新規候補
+- `sales-management-service/src/main/java/com/example/skishop/sales/controller/SalesAnalyticsController.java`
+- `ai-support-service/src/main/java/com/example/skishop/ai/tool/AnalyticsToolFunctions.java` 参考
+
+### 修正方針
+
+`Math.random()` で週次売上見込みを作らず、既存の `sku-velocity` または在庫データから算出する。
+
+既存 `sku-velocity` は以下を返す。
+
+- `sku`
+- `sales30`
+- `sales90`
+- `units30`
+- `units90`
+- `lastSoldAt`
+- `avgPrice`
+
+推奨計算例:
+
+```text
+weeklyEstimate = max(ceil(units30 / 30 * 7), ceil(units90 / 90 * 7), 0)
+targetStock = max(lowStockThreshold, weeklyEstimate * 2)
+reorderQty = max(targetStock - availableStock, 0)
+```
+
+### 実装手順
+
+1. Next.js BFF `/api/admin/inventory/reorder-recommendations` を追加する。
+2. BFF 内で以下を取得する。
+
+- `/api/v1/inventory/low-stock?threshold=10`
+- `/api/v1/admin/orders/analytics/sku-velocity`
+
+3. `sku` で join して `weeklyEstimate`, `reorderQty`, `basis` を返す。
+4. sales velocity がない SKU は `weeklyEstimate=0`, `reorderQty=max(lowStockThreshold - currentStock, 0)` とし、`basis='threshold-only'` を返す。
+5. Admin Inventory page は `lowStockItems.slice(...).map()` 内の random 計算をやめ、BFF response を表示する。
+6. 表示には「根拠: 30日販売数 / 90日販売数 / 閾値のみ」を含める。
+
+### テスト
+
+- `units30=30` の SKU は `weeklyEstimate=7` になる。
+- `currentStock=3`, `weeklyEstimate=7` の場合、`targetStock=14`, `reorderQty=11` になる。
+- velocity がない SKU でも random ではなく threshold basis になる。
+- `Math.random()` が Admin Inventory から消える。
+
+### 完了条件
+
+- 在庫発注推奨の数値が同じ入力に対して常に同じになる。
+- 発注推奨が実売上速度または在庫閾値を根拠にする。
+
+## Phase 8: Payment simulated provider の本番混入防止
+
+### 対象ファイル
+
+- `payment-cart-service/src/main/java/com/example/skishop/payment/gateway/SimulatedPaymentGatewayClient.java`
+- `payment-cart-service/src/main/java/com/example/skishop/payment/config/PaymentGatewayProperties.java`
+- `payment-cart-service/src/main/resources/application.properties`
+- `payment-cart-service/src/main/resources/application-test.properties`
+- `payment-cart-service/src/test/java/com/example/skishop/payment/gateway/SimulatedPaymentGatewayClientTest.java`
+
+### 修正方針
+
+外部決済事業者の認証情報がない状態で Stripe 等の実 gateway を完全実装することはできない。修正可能な正しい対応は、simulated provider を local/test 明示設定に閉じ込め、本番 profile では simulated が既定にならないようにすることである。
+
+### 実装手順
+
+1. `PaymentGatewayProperties.DEFAULT_PROVIDER = "simulated"` を削除するか、`null` / 空文字を許さない validation にする。
+2. `application.properties` の default `${PAYMENT_GATEWAY_PROVIDER:simulated}` をやめ、`${PAYMENT_GATEWAY_PROVIDER}` として環境変数必須にする。
+3. `application-local.properties` または `application-dev.properties` を追加し、local profile のみ `skishop.payment.gateway.provider=simulated` を設定する。
+4. `application-test.properties` は引き続き `simulated` を許可する。
+5. `SimulatedPaymentGatewayClient` に `@Profile({"local", "dev", "test"})` または `@ConditionalOnProperty(name="skishop.payment.gateway.provider", havingValue="simulated")` を付ける。
+6. 本番 profile で `provider=simulated` の場合は startup failure にする。
+
+候補:
+
+```java
+@PostConstruct
+void validateProvider() {
+    if (productionProfile && "simulated".equalsIgnoreCase(provider)) {
+        throw new IllegalStateException("simulated payment gateway is not allowed in production");
+    }
+}
+```
+
+7. 将来の実 gateway 用に `StripePaymentGatewayClient` などを追加する場合は別タスクにする。実装には provider secret, webhook secret, idempotency key 方針が必要。
+
+### テスト
+
+- test profile では simulated gateway が登録される。
+- prod profile かつ provider 未設定では起動失敗する。
+- prod profile かつ provider=simulated では起動失敗する。
+- `pm_fail` は simulated provider のテスト内だけで有効。
+
+### 完了条件
+
+- 本番既定値として simulated が使われない。
+- simulated は明示的な local/test 用実装として扱われる。
+
+## Phase 9: Weather fallback 東京固定の廃止
+
+### 対象ファイル
+
+- `ai-agent-services/weather-agent/src/main/java/com/example/skishop/agent/weather/client/OpenMeteoClient.java`
+- weather-agent の response DTO / controller
+- weather-agent tests
+
+### 修正方針
+
+location が不明なときに東京の天気を正常応答として返さない。天気データが取得できない場合は `unavailable` として返す。
+
+### 実装手順
+
+1. `FALLBACK_LOCATION` を削除するか、dev/test 専用 property `weather.fallback-location.enabled=false` の背後に置く。
+2. `geocode(String locationName)` の戻り値を `GeoLocation` から `Optional<GeoLocation>` に変更する。または `GeocodingFailedException` を投げる。
+3. location 空の場合は 400 相当、geocoding 失敗の場合は 404 / 503 相当の response にする。
+4. どうしても fallback を残す場合は response に `fallbackUsed=true`, `fallbackReason`, `sourceLocation` を含め、正常値と区別する。
+5. 呼び出し側の `AnalyticsToolFunctions.getWeatherForecast()` は `null` / unavailable を受けた場合、季節予測の assumptions に「気象データなし」と記録して継続する。
+
+### テスト
+
+- 空 location で東京座標が返らない。
+- 存在しない location で東京座標が返らない。
+- 既知 resort は従来通り正しい座標を返す。
+- geocoding API failure は unavailable として表現される。
+
+### 完了条件
+
+- `Tokyo (fallback)` が main code から消える、または dev/test 限定になる。
+- 不明地点で東京天気を誤表示しない。
+
+## Phase 10: Frontend UUID fallback の安全化
+
+### 対象ファイル
+
+- `frontend/src/lib/uuid.ts`
+- UUID helper を使う frontend tests
+
+### 修正方針
+
+`crypto.randomUUID()` が使えない環境でも `Math.random()` ではなく `crypto.getRandomValues()` を使う。
+
+### 実装手順
+
+1. `crypto.randomUUID()` があれば現状通り使用する。
+2. `crypto.getRandomValues()` があれば RFC 4122 v4 bytes を生成する。
+3. `crypto` 自体が存在しない場合は、ID 発行を失敗させるか、server-side で発行する設計に切り替える。
+4. `Math.random()` fallback は削除する。
+
+実装例:
+
+```ts
+const bytes = new Uint8Array(16);
+crypto.getRandomValues(bytes);
+bytes[6] = (bytes[6] & 0x0f) | 0x40;
+bytes[8] = (bytes[8] & 0x3f) | 0x80;
+```
+
+### テスト
+
+- `crypto.randomUUID` がある場合はそれを使う。
+- `crypto.randomUUID` がなく `crypto.getRandomValues` がある場合、v4 UUID 形式を返す。
+- `Math.random` を spy しても呼ばれない。
+
+### 完了条件
+
+- `frontend/src/lib/uuid.ts` から `Math.random()` が消える。
+
+## Phase 11: Terraform Container Apps image placeholder の修正
+
+### 対象ファイル
+
+- `infra/terraform/main.tf`
+- `infra/terraform/variables.tf` 新規または既存
+- `infra/terraform/terraform.tfvars.example` 新規候補
+- deployment workflow
+
+### 修正方針
+
+`mcr.microsoft.com/k8se/quickstart:latest` を本番適用可能な既定値として残さない。Container Apps image は変数化し、未設定時は plan / apply 前に失敗させる。
+
+### 実装手順
+
+1. service ごとの image 変数を定義する。
+
+```hcl
+variable "container_images" {
+  type = map(string)
+  description = "Container image per service name"
+  validation {
+    condition = alltrue([for image in values(var.container_images) : length(trimspace(image)) > 0])
+    error_message = "All container images must be set."
+  }
+}
+```
+
+2. `azurerm_container_app` の `image` に `var.container_images[each.key]` を使う。
+3. quickstart image は削除する。
+4. CI/CD で ACR push 後の digest または tag を tfvars / variable に渡す。
+5. example tfvars には placeholder と分かるコメントだけを書き、実値は環境から渡す。
+
+### テスト
+
+- `terraform validate` が成功する。
+- image 未設定時に validation error になる。
+- quickstart image が `infra/terraform` から消える。
+
+### 完了条件
+
+- Terraform apply で quickstart コンテナが起動しない。
+
+## Phase 12: 空値 fallback / DataAvailability の整備
+
+### 対象ファイル
+
+- `ai-support-service/src/main/java/com/example/skishop/ai/tool/AnalyticsToolFunctions.java`
+- `ai-support-service/src/main/java/com/example/skishop/ai/service/WeeklySummaryService.java`
+- `ai-support-service/src/main/java/com/example/skishop/ai/service/DeadStockService.java`
+- `ai-support-service/src/main/java/com/example/skishop/ai/service/ZeroHitOpportunityService.java`
+- `ai-support-service/src/main/java/com/example/skishop/ai/service/SeasonalForecastService.java`
+- frontend AI Analyzer 表示
+
+### 修正方針
+
+CircuitBreaker fallback 自体は必要であり、すべて削除するべきではない。修正すべき点は、`0` や空リストが「真の 0 件」と誤解されないよう、availability を DTO に含めて UI まで伝播することである。
+
+### 実装手順
+
+1. すでに `DataAvailability` を持つ DTO は、fallback 時に必ず `unavailable` を返す。
+2. `DailyRevenueResult`, `TopProductsResult`, `CategoryShareResult`, `SeasonalHistoricalResult`, `WeatherForecastResult` など、availability を持たない DTO は field 追加を検討する。
+3. `fallbackWeatherForecast()` の `return null` を避け、`WeatherForecastResult` に空 weeks と unavailable reason を返す。
+4. `WeeklySummaryService.fetchSalesSummary()` / `fetchUserSummary()` は `Map.of()` だけでなく availability / warning を呼び出し元へ渡す設計にする。
+5. frontend AI Analyzer は unavailable の場合に「データ取得不可」と表示し、0 件として扱わない。
+
+### テスト
+
+- sales service down 時、売上 0 と unavailable を区別できる。
+- inventory service down 時、在庫 0 と unavailable を区別できる。
+- weather service down 時、季節予測に assumptions / warning が残る。
+
+### 完了条件
+
+- 主要 analytics fallback が真の 0 件と取得不能を区別する。
+
+## Phase 13: Localhost / example secret の扱い整理
+
+### 対象ファイル
+
+- `frontend/src/lib/env.ts`
+- frontend BFF route 全般
+- `.env.example`
+- `frontend/.env.example`
+- `docker-compose.yml`
+- README / runbook
+
+### 修正方針
+
+localhost default は開発用途として許容できるが、本番 build / runtime で暗黙に使われないよう profile / env validation を強める。example secret は実 secrets ではないが、誤用防止の警告を明確化する。
+
+### 実装手順
+
+1. `NODE_ENV === 'production'` かつ `API_GATEWAY_URL` 未設定の場合は起動時に validation error にする。
+2. `AUTH_SECRET` は production で `your-secret-here` / `dev-secret-change-in-production` を拒否する。
+3. `docker-compose.yml` は local compose 用と明記する。
+4. `.env.example` の dummy 値に `DO_NOT_USE_IN_PRODUCTION` コメントを追加する。
+
+### テスト
+
+- production env で `AUTH_SECRET=your-secret-here` の場合、build または runtime validation が失敗する。
+- development env では localhost default で動作する。
+
+### 完了条件
+
+- 本番環境で local fallback URL / dev secret が暗黙利用されない。
+
+## Phase 14: Admin Mail Logs 固定統計 fallback の廃止
+
+### 対象ファイル
+
+- `frontend/src/app/(admin)/admin/mail-logs/page.tsx`
+- `frontend/src/app/api/admin/mail/stats/route.ts`
+- `mailsend-service/src/main/java/com/example/skishop/mailsend/controller/MailController.java`
+- `mailsend-service/src/main/java/com/example/skishop/mailsend/service/MailService.java`
+- `mailsend-service/src/main/java/com/example/skishop/mailsend/dto/MailStatsResponse.java`
+- `mailsend-service/src/main/java/com/example/skishop/mailsend/repository/MailLogRepository.java`
+
+### 修正方針
+
+メールログ画面の送信統計 chart は、stats が空の場合に固定の曜日別送信数を表示している。これは Admin Dashboard と同じく運用データを偽装するため廃止する。
+
+backend の `/api/v1/mail/stats` は現状 aggregate のみを返すため、日別 chart が必要なら backend に `daily` を追加する。日別統計をすぐ実装しない場合は、frontend は固定 chart を出さず「日別統計は取得できません」と表示する。
+
+### 実装手順
+
+1. `MailStatsResponse` に以下を追加する。
+
+```java
+List<DailyMailStat> daily
+```
+
+2. `DailyMailStat` は `date`, `sentCount`, `failedCount`, `successRate` を持つ record にする。
+3. `MailLogRepository` に過去 7 日分の日別集計 query を追加する。
+4. `MailService.stats()` で aggregate と daily を同時に返す。
+5. `frontend/src/app/api/admin/mail/stats/route.ts` は response をそのまま返す。
+6. `mail-logs/page.tsx` は `data.daily` がある場合だけ chart を表示する。
+7. `fallbackStats` の固定 `月:120`, `火:95` などを削除する。
+8. stats 取得失敗時は chart area に degraded state を表示する。
+
+### テスト
+
+- mail log が存在する場合、過去 7 日分の日別送信数が返る。
+- mail log が 0 件の場合、全日 0 または空 state を返し、固定値は表示しない。
+- `/api/admin/mail/stats` が backend 500 の場合、frontend が固定 chart を表示しない。
+
+### 完了条件
+
+- `fallbackStats` と固定曜日別送信数が main code から消える。
+- メールログ画面の chart が実統計または取得不可状態だけを表示する。
+
+## Phase 15: EC ホーム固定カテゴリ fallback と footer i18n TODO の整理
+
+### 対象ファイル
+
+- `frontend/src/components/ec/category-section.tsx`
+- `frontend/src/components/layout/ec-footer.tsx`
+- `frontend/src/lib/i18n.ts` または i18n 辞書ファイル
+- `frontend/src/lib/tips/index.ts`
+
+### 修正方針
+
+EC ホームのカテゴリ欄は、API 失敗時に固定カテゴリカードを実リンク付きで表示している。seed データと同じ ID であっても、backend が取得できない状態をユーザーに実カテゴリとして見せるのは避ける。空状態、skeleton、または degraded section に変更する。
+
+footer の `TODO: i18n` は実装残りとして解消する。既存の `t('shared.footer.*')` パターンに合わせ、紹介文を i18n 辞書に移す。
+
+`frontend/src/lib/tips/index.ts` の `Math.random()` は Tip 表示の UX 用であり、UUID や発注推奨のような業務データ・セキュリティ用途ではない。ただし横断検索で `Math.random()` をゼロにしたい場合は、crypto ベース helper または test で seed 可能な picker に置換する。
+
+### 実装手順
+
+1. `CategorySection` の `categories.length === 0` で `PlaceholderCategories` を返さない。
+2. API 未取得時は skeleton / degraded message / 空 section のいずれかにする。固定 `cat-ski` などのリンク付きカードは出さない。
+3. `PlaceholderCategories` は削除するか、テスト専用 fixture に移す。
+4. `ec-footer.tsx` の紹介文を `shared.footer.description` などの key に移し、TODO コメントを削除する。
+5. `tips/index.ts` は今回の修正対象に含めるかを決める。含める場合は `randomFloat()` helper を作り、`crypto.getRandomValues` が使える環境ではそれを使う。テストでは deterministic RNG を注入できる設計にする。
+
+### テスト
+
+- `/api/dashboard/home` が失敗しても固定カテゴリカードが表示されない。
+- categories が返る場合は実カテゴリだけが表示される。
+- footer に TODO コメントが残らず、辞書 key から紹介文が表示される。
+- tips の乱択を修正対象に含めた場合、`Math.random()` が `frontend/src/lib/tips/index.ts` から消える、または横断検証の除外対象に明記される。
+
+### 完了条件
+
+- EC ホームで API 失敗時に固定カテゴリを実データ風に表示しない。
+- footer の i18n TODO が消える。
+- Tip ランダム表示を修正対象外にする場合は、その理由が横断検証の除外対象に記録されている。
+
+## 修正対象外として扱う項目
+
+以下は再検索で検出されるが、本計画では未実装・モック修正対象から除外する。横断検証で残存しても、理由付きで分類する。
+
+| 項目 | 判断 |
+| --- | --- |
+| `src/test/**` の Mockito / MockRestServiceServer / MSW | テスト用 mock であり production mock ではない。 |
+| `load-tests/**` の `Math.random()` | 負荷試験データのランダム化であり、本番ロジックではない。 |
+| UI component の `placeholder` prop / input placeholder | HTML 入力補助文言であり、未実装 placeholder ではない。 |
+| `return null` による optional rendering / parser fallback | React の非表示制御や optional parse の正常表現は対象外。API fallback として `null` を返し true zero と混同する箇所のみ Phase 12 で扱う。 |
+| `frontend/src/lib/tips/index.ts` の Tip ランダム選択 | 業務データ・セキュリティ用途ではない。全 `Math.random()` 排除方針にする場合のみ Phase 15 で修正する。 |
+
+## 横断検証計画
+
+### 検索確認
+
+`rg` がない環境では以下を `grep_search` または `git grep -n` で確認する。
+
+対象 pattern:
+
+```text
+TODO|FIXME|未実装|現状スタブ|placeholder|dummy-|MOCK_MODELS|Math.random|quickstart:latest|provider=simulated|DEFAULT_PROVIDER = "simulated"|SKU-SEM
+```
+
+除外対象:
+
+- `**/target/**`
+- `**/.next/**`
+- `**/node_modules/**`
+- `**/coverage/**`
+- `src/test/**` の Mockito / MockRestServiceServer
+- load test / seed data の random
+
+### Maven 検証
+
+Java 変更後は focused module から実行する。
+
+```bash
+JAVA_HOME=/Library/Java/JavaVirtualMachines/microsoft-21.jdk/Contents/Home mvn -pl sales-management-service -am test -Dtest=InternalSalesControllerTest,OrderRepositoryTest
+JAVA_HOME=/Library/Java/JavaVirtualMachines/microsoft-21.jdk/Contents/Home mvn -pl coupon-service -am test -Dtest=InternalCouponControllerTest
+JAVA_HOME=/Library/Java/JavaVirtualMachines/microsoft-21.jdk/Contents/Home mvn -pl ai-support-service -am test -Dtest=SearchServiceTest,ModelManagementServiceTest
+JAVA_HOME=/Library/Java/JavaVirtualMachines/microsoft-21.jdk/Contents/Home mvn -pl payment-cart-service -am test -Dtest=PaymentGatewayPropertiesTest,SimulatedPaymentGatewayClientTest
+JAVA_HOME=/Library/Java/JavaVirtualMachines/microsoft-21.jdk/Contents/Home mvn -pl mailsend-service -am test -Dtest=MailServiceTest,MailControllerTest
+```
+
+### Frontend 検証
+
+```bash
+cd frontend
+npm run lint
+npm run test -- --run
+npm run build
+```
+
+必要に応じて Playwright で以下を確認する。
+
+- `/search?q=...` で semantic route が 404 にならない。
+- Admin AI で mock model が表示されない。
+- Admin Dashboard で backend down 時に fake KPI が表示されない。
+- Admin Inventory で発注推奨値が reload ごとに変化しない。
+- Admin Mail Logs で stats API 失敗時に固定曜日別 chart が表示されない。
+- EC ホームで dashboard API 失敗時に固定カテゴリカードが表示されない。
+
+### Infra 検証
+
+```bash
+cd infra/terraform
+terraform fmt -check
+terraform validate
+```
+
+## 完了判定チェックリスト
+
+- [ ] `InternalSalesController.getSalesCount()` が DB 集計を返す。
+- [ ] coupon 未存在時に dummy coupon が返らない。
+- [ ] `/api/search/semantic` と `/api/search/feedback` が実装され、backend へ proxy される。
+- [ ] search feedback が ai-support-service で永続化され、ログ返却のみで終わらない。
+- [ ] search semantic fallback で固定 SKU / 固定在庫が生成されない。
+- [ ] catalog category name が API から取得される。
+- [ ] catalog sort が URL query と商品取得に反映される。
+- [ ] Admin AI 画面から `MOCK_MODELS` が消える。
+- [ ] Admin AI training progress が status API 由来になる。
+- [ ] Admin AI BFF から存在しない `/api/v1/ai/models/**` 呼び出しが消える。
+- [ ] Admin Dashboard から固定 KPI / 固定注文 / 固定低在庫 fallback が消える。
+- [ ] Admin Mail Logs から固定曜日別 stats fallback が消える。
+- [ ] Admin Inventory の発注推奨から `Math.random()` が消える。
+- [ ] EC ホームの固定カテゴリ fallback が消え、footer i18n TODO が解消される。
+- [ ] payment gateway の simulated provider が production default で使われない。
+- [ ] weather-agent が geocoding 失敗時に東京天気を正常値として返さない。
+- [ ] frontend UUID fallback が `crypto.getRandomValues()` ベースになる。
+- [ ] Terraform Container Apps image が quickstart placeholder ではなく変数由来になる。
+- [ ] fallback DTO / UI が真の 0 件と取得不能を区別する。
+- [ ] production env で localhost default / dev secret が暗黙利用されない。
+
+## 実装時の注意点
+
+- すべてを 1 回で直すと backend / frontend / infra の blast radius が大きい。Phase 1 から Phase 4 を先に実施し、業務ロジック上の誤データ返却を止める。
+- Admin Dashboard の fake data 削除は UI 表示に影響が大きい。ユーザー体験として空白にせず、明示的な degraded state を用意する。
+- payment の real provider 化は外部決済仕様と秘密情報が必要なため、今回の計画では「本番で simulated が暗黙利用されない」ことを修正ゴールにする。
+- fallback を削除しすぎると可用性が落ちる。削除対象は「偽データとして見える fallback」であり、障害時継続の deterministic fallback は availability を付けて残す。

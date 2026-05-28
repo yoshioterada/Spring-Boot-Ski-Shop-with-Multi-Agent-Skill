@@ -94,4 +94,39 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
             GROUP BY oi.product_id
             """, nativeQuery = true)
     List<Object[]> productRevenueSince(@Param("since") Instant since);
+
+    @Query(value = """
+            SELECT COUNT(*) AS order_count,
+                   COALESCE(SUM(o.total_amount), 0) AS total_amount
+            FROM orders o
+            WHERE o.customer_id = :customerId
+              AND o.status NOT IN ('CANCELLED', 'RETURNED')
+            """, nativeQuery = true)
+    List<Object[]> customerPurchaseSummary(@Param("customerId") UUID customerId);
+
+    @Query(value = """
+            SELECT COALESCE(NULLIF(oi.product_sku, ''), NULLIF(oi.product_name, ''), oi.product_id) AS label,
+                   SUM(oi.quantity) AS quantity
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            WHERE o.customer_id = :customerId
+              AND o.status NOT IN ('CANCELLED', 'RETURNED')
+            GROUP BY label
+            ORDER BY quantity DESC, label ASC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Object[]> topPurchasedLabelsByCustomer(@Param("customerId") UUID customerId, @Param("limit") int limit);
+
+    @Query(value = """
+            SELECT oi.product_id AS product_id,
+                   SUM(oi.quantity) AS quantity
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            WHERE o.customer_id = :customerId
+              AND o.status NOT IN ('CANCELLED', 'RETURNED')
+            GROUP BY oi.product_id
+            ORDER BY quantity DESC, product_id ASC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Object[]> topPurchasedProductIdsByCustomer(@Param("customerId") UUID customerId, @Param("limit") int limit);
 }

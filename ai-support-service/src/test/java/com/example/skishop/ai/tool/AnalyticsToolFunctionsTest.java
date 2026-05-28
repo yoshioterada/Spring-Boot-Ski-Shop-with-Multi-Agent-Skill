@@ -1,6 +1,15 @@
 package com.example.skishop.ai.tool;
 
 import com.example.skishop.ai.dto.ToolResults.*;
+import com.example.skishop.ai.dto.DataAvailability;
+import com.example.skishop.ai.dto.DeadStockResponse;
+import com.example.skishop.ai.dto.DeadStockResponse.DeadStockItem;
+import com.example.skishop.ai.dto.DeadStockResponse.Severity;
+import com.example.skishop.ai.dto.ZeroHitOpportunityResponse;
+import com.example.skishop.ai.dto.ZeroHitOpportunityResponse.Opportunity;
+import com.example.skishop.ai.dto.ZeroHitOpportunityResponse.Summary;
+import com.example.skishop.ai.service.DeadStockService;
+import com.example.skishop.ai.service.ZeroHitOpportunityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -8,7 +17,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Instant;
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 
 /**
  * AnalyticsToolFunctions 単体テスト (P2-1〜P2-3).
@@ -27,12 +40,17 @@ class AnalyticsToolFunctionsTest {
     private WebClient couponWebClient;
     @Mock
     private WebClient weatherWebClient;
+    @Mock
+    private DeadStockService deadStockService;
+    @Mock
+    private ZeroHitOpportunityService zeroHitOpportunityService;
 
     private AnalyticsToolFunctions tools;
 
     @BeforeEach
     void setUp() {
-        tools = new AnalyticsToolFunctions(salesWebClient, userWebClient, inventoryWebClient, couponWebClient, weatherWebClient);
+        tools = new AnalyticsToolFunctions(salesWebClient, userWebClient, inventoryWebClient,
+                couponWebClient, weatherWebClient, deadStockService, zeroHitOpportunityService);
     }
 
     // ── P2-3: 戻り値がすべて Record クラス（Object 禁止） ──
@@ -118,6 +136,106 @@ class AnalyticsToolFunctionsTest {
         var result = new ProductSearchResult("ski boots", 0, java.util.List.of());
         assertThat(result).isInstanceOf(Record.class);
     }
+
+        @Test
+        void getDeadStock_usesDedicatedServiceAndPreservesFields() {
+        // Arrange
+        var response = new DeadStockResponse(Instant.now(), List.of(
+            new DeadStockItem("SKU-1", "Powder Ski", 12, 0, 1, 360,
+                Severity.CRITICAL, 40.0, "reason", "cat-ski"),
+            new DeadStockItem("SKU-2", "Jacket", 8, 3, 9, 120,
+                Severity.HIGH, 25.5, "reason", "cat-wear"),
+            new DeadStockItem("SKU-3", "Helmet", 5, 8, 20, 60,
+                Severity.MEDIUM, 10.0, "reason", "cat-ski")
+        ), "narrative", DataAvailability.available());
+        when(deadStockService.getDeadStock()).thenReturn(response);
+
+        // Act
+        DeadStockResult result = tools.getDeadStock("all", "cat-ski");
+
+        // Assert
+        assertThat(result.items()).hasSize(2);
+        assertThat(result.availability()).isEqualTo(DataAvailability.available());
+        assertThat(result.items()).extracting(DeadStockResult.DeadStockEntry::sku)
+            .containsExactly("SKU-1", "SKU-3");
+        assertThat(result.items().getFirst().daysOfSupply()).isEqualTo(360);
+        assertThat(result.items().getFirst().suggestedDiscountPct()).isEqualTo(40.0);
+        assertThat(result.items().getFirst().categoryId()).isEqualTo("cat-ski");
+        }
+
+        @Test
+        void getDeadStock_appliesSeverityFilterConsistentlyWithDedicatedResponse() {
+        // Arrange
+        var response = new DeadStockResponse(Instant.now(), List.of(
+            new DeadStockItem("SKU-1", "Powder Ski", 12, 0, 1, 360,
+                Severity.CRITICAL, 40.0, null, "cat-ski"),
+            new DeadStockItem("SKU-2", "Jacket", 8, 3, 9, 120,
+                Severity.HIGH, 25.5, null, "cat-wear")
+        ), "narrative", DataAvailability.partial(List.of("sales-service")));
+        when(deadStockService.getDeadStock()).thenReturn(response);
+
+        // Act
+        DeadStockResult result = tools.getDeadStock("critical", null);
+
+        // Assert
+        assertThat(result.items()).extracting(DeadStockResult.DeadStockEntry::sku)
+            .containsExactly("SKU-1");
+        assertThat(result.availability()).isEqualTo(response.availability());
+        }
+
+        @Test
+        void getZeroHitOpportunities_usesDedicatedServiceAfterDismissals() {
+        // Arrange
+        var response = new ZeroHitOpportunityResponse(Instant.now(), 30,
+            new Summary(1, 47, 117500, "cat-ski"),
+            List.of(new Opportunity(1, "atomic cloud", 47, Instant.now(),
+                "cat-ski", "women", 117500, "HIGH",
+                "Atomic Cloud 系の仕入れ検討", List.of(), List.of())),
+            DataAvailability.available());
+        when(zeroHitOpportunityService.getOpportunities(30, 1, null, 10)).thenReturn(response);
+
+        // Act
+        ZeroHitResult result = tools.getZeroHitOpportunities(30, 10);
+
+        // Assert
+        assertThat(result.keywords()).hasSize(1);
+        ZeroHitResult.ZeroHitEntry entry = result.keywords().getFirst();
+        assertThat(entry.keyword()).isEqualTo("atomic cloud");
+        assertThat(entry.normalizedKeyword()).isEqualTo("atomic cloud");
+        assertThat(entry.searchCount()).isEqualTo(47);
+        assertThat(entry.estimatedLoss()).isEqualTo(117500);
+        assertThat(entry.category()).isEqualTo("cat-ski");
+        assertThat(entry.suggestedAction()).isEqualTo("Atomic Cloud 系の仕入れ検討");
+        assertThat(result.availability()).isEqualTo(DataAvailability.available());
+        }
+
+        @Test
+        void getZeroHitOpportunities_propagatesUnavailableAndTrueZeroStates() {
+        // Arrange
+        var unavailable = DataAvailability.unavailable(List.of("inventory-service"));
+        var response = new ZeroHitOpportunityResponse(Instant.now(), 30,
+            new Summary(0, 0, 0, "unknown"), List.of(), unavailable);
+        when(zeroHitOpportunityService.getOpportunities(30, 1, null, 10)).thenReturn(response);
+
+        // Act
+        ZeroHitResult result = tools.getZeroHitOpportunities(30, 10);
+
+        // Assert
+        assertThat(result.keywords()).isEmpty();
+        assertThat(result.availability()).isEqualTo(unavailable);
+
+        // Arrange
+        var trueZero = new ZeroHitOpportunityResponse(Instant.now(), 30,
+            new Summary(0, 0, 0, "unknown"), List.of(), DataAvailability.available());
+        when(zeroHitOpportunityService.getOpportunities(30, 1, null, 10)).thenReturn(trueZero);
+
+        // Act
+        ZeroHitResult trueZeroResult = tools.getZeroHitOpportunities(30, 10);
+
+        // Assert
+        assertThat(trueZeroResult.keywords()).isEmpty();
+        assertThat(trueZeroResult.availability().dataAvailable()).isTrue();
+        }
 
     // ── 引数バリデーション境界値テスト (P2-2) ──
 

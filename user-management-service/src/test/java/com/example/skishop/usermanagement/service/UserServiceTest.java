@@ -3,6 +3,9 @@ package com.example.skishop.usermanagement.service;
 import com.example.skishop.common.event.EventPublisher;
 import com.example.skishop.common.exception.BusinessRuleViolationException;
 import com.example.skishop.common.exception.ResourceNotFoundException;
+import com.example.skishop.usermanagement.client.CouponSummaryClient;
+import com.example.skishop.usermanagement.client.PointSummaryClient;
+import com.example.skishop.usermanagement.client.SalesSummaryClient;
 import com.example.skishop.usermanagement.dto.*;
 import com.example.skishop.usermanagement.model.RoleEntity;
 import com.example.skishop.usermanagement.model.UserActivity;
@@ -48,6 +51,9 @@ class UserServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private EventPublisher eventPublisher;
     @Mock private VerificationTokenRepository verificationTokenRepository;
+    @Mock private PointSummaryClient pointSummaryClient;
+    @Mock private SalesSummaryClient salesSummaryClient;
+    @Mock private CouponSummaryClient couponSummaryClient;
 
     private UserService userService;
 
@@ -55,7 +61,7 @@ class UserServiceTest {
     void setUp() {
         userService = new UserService(userProfileRepository, roleEntityRepository,
                 userPreferenceRepository, userActivityRepository, passwordEncoder, eventPublisher,
-                verificationTokenRepository);
+                verificationTokenRepository, pointSummaryClient, salesSummaryClient, couponSummaryClient);
     }
 
     private UserProfile createTestUser() {

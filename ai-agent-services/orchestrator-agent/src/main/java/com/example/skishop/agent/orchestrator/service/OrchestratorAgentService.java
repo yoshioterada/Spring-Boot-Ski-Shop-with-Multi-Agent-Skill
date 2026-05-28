@@ -38,6 +38,8 @@ public class OrchestratorAgentService {
             - 上記 8 ステップを終えたら直ちに最終 JSON を返す。それ以上ツールを呼び出してはならない。
             - 最終出力に orchestrationSummary（日本語 300 文字以内）を必ず含める。
             - 予算超過時は優先度の高い商品から順に選択する。
+            - 顧客ティア、ポイント残高、過去購入カテゴリ、利用可能クーポンを推薦・価格・クーポン最適化に必ず反映する。
+            - profileWarnings がある場合は、不足データを補完推測しすぎず、取得できた情報だけで安全に提案する。
             """;
 
     private final ChatClient orchestratorChatClient;
@@ -117,16 +119,37 @@ public class OrchestratorAgentService {
         return """
                 ユーザーID: %s
                 注文ID: %s
+                表示名: %s
                 顧客ティア: %s
+                ポイント残高: %s
+                優先スキルレベル: %s
                 過去購入カテゴリ: %s
+                利用可能クーポン: %s
+                profileWarnings: %s
                 リクエスト: %s
                 クーポンコード: %s
                 ポイント使用希望: %s
                 """.formatted(
-                request.userId(), orderId, profile.customerTier(),
+                request.userId(), orderId,
+                profile.displayName() == null ? "" : profile.displayName(),
+                profile.customerTier(),
+                profile.pointBalance() == null ? 0 : profile.pointBalance(),
+                profile.preferredSkillLevel() == null ? "INTERMEDIATE" : profile.preferredSkillLevel(),
                 profile.purchasedCategories() == null ? "" : String.join("・", profile.purchasedCategories()),
+                formatCoupons(profile.availableCoupons()),
+                profile.warnings() == null || profile.warnings().isEmpty() ? "なし" : String.join(" / ", profile.warnings()),
                 request.message(),
                 request.couponCode() != null ? request.couponCode() : "なし",
                 request.usePoints() ? "はい" : "いいえ");
+    }
+
+    private String formatCoupons(java.util.List<UserManagementClient.CouponSummary> coupons) {
+        if (coupons == null || coupons.isEmpty()) {
+            return "なし";
+        }
+        return coupons.stream()
+                .map(c -> "%s(%s %s, 最低購入額:%s, 期限:%s)".formatted(
+                        c.couponCode(), c.discountType(), c.discountValue(), c.minimumAmount(), c.expiresAt()))
+                .collect(java.util.stream.Collectors.joining(" / "));
     }
 }

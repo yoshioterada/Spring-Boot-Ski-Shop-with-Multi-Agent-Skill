@@ -5,15 +5,19 @@ import com.example.skishop.common.event.EventPublisher;
 import com.example.skishop.common.exception.BusinessRuleViolationException;
 import com.example.skishop.common.exception.ResourceNotFoundException;
 import com.example.skishop.inventory.dto.*;
+import com.example.skishop.inventory.model.InventoryReleaseLog;
 import com.example.skishop.inventory.model.Product;
+import com.example.skishop.inventory.repository.InventoryReleaseLogRepository;
 import com.example.skishop.inventory.repository.ProductRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Service
 public class ProductService {
@@ -22,10 +26,14 @@ public class ProductService {
     private static final int LOW_STOCK_THRESHOLD = 10;
 
     private final ProductRepository productRepository;
+    private final InventoryReleaseLogRepository inventoryReleaseLogRepository;
     private final EventPublisher eventPublisher;
 
-    public ProductService(ProductRepository productRepository, EventPublisher eventPublisher) {
+    public ProductService(ProductRepository productRepository,
+                          InventoryReleaseLogRepository inventoryReleaseLogRepository,
+                          EventPublisher eventPublisher) {
         this.productRepository = productRepository;
+        this.inventoryReleaseLogRepository = inventoryReleaseLogRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -111,12 +119,21 @@ public class ProductService {
     }
 
     public Page<ProductResponse> searchProducts(String query, Pageable pageable) {
-        return productRepository.findByNameContainingIgnoreCaseOrBrandContainingIgnoreCase(query, query, pageable)
+        return productRepository.searchActiveAvailable(Pattern.quote(query), pageable)
+                .map(this::toResponse);
+    }
+
+    public Page<ProductResponse> searchProducts(String query, String categoryId, Pageable pageable) {
+        String quotedQuery = Pattern.quote(query);
+        if (categoryId == null || categoryId.isBlank()) {
+            return productRepository.searchActiveAvailable(quotedQuery, pageable).map(this::toResponse);
+        }
+        return productRepository.searchActiveAvailableByCategoryId(quotedQuery, categoryId.trim(), pageable)
                 .map(this::toResponse);
     }
 
     public Page<ProductResponse> listByCategory(String categoryId, Pageable pageable) {
-        return productRepository.findByCategoryId(categoryId, pageable).map(this::toResponse);
+        return productRepository.findActiveAvailableByCategoryId(categoryId, pageable).map(this::toResponse);
     }
 
     // --- Inventory Operations ---
@@ -170,6 +187,51 @@ public class ProductService {
 
         eventPublisher.publish(DomainEvent.create("InventoryUpdated", "inventory-service",
                 new InventoryEventPayload(product.getId(), product.getSku(), request.quantity(), product.getAvailableQuantity())));
+
+        return toResponse(product);
+    }
+
+    public ProductResponse releaseStockBySku(InternalReleaseStockRequest request) {
+        String normalizedSku = request.sku().trim();
+        String normalizedReason = request.reason().trim();
+        String normalizedReferenceId = request.referenceId().trim();
+        log.info("Releasing {} units of SKU {} for reference {}", request.quantity(), normalizedSku, normalizedReferenceId);
+
+        Product product = productRepository.findBySku(normalizedSku)
+                .orElseThrow(() -> new ResourceNotFoundException("Product", "sku=" + normalizedSku));
+
+        if (inventoryReleaseLogRepository.existsByReferenceIdAndSkuAndReason(
+                normalizedReferenceId, normalizedSku, normalizedReason)) {
+            log.info("Inventory release already applied for reference={}, sku={}, reason={}",
+                    normalizedReferenceId, normalizedSku, normalizedReason);
+            return toResponse(product);
+        }
+
+        if (product.getReservedQuantity() < request.quantity()) {
+            throw new BusinessRuleViolationException("RELEASE_EXCEEDS_RESERVED",
+                    "解放数量が予約数量を超えています。予約数量: " + product.getReservedQuantity());
+        }
+
+        var releaseLog = new InventoryReleaseLog(normalizedReferenceId, normalizedSku, request.quantity(), normalizedReason);
+        try {
+            inventoryReleaseLogRepository.save(releaseLog);
+        } catch (DuplicateKeyException ex) {
+            log.info("Inventory release duplicate detected for reference={}, sku={}, reason={}",
+                    normalizedReferenceId, normalizedSku, normalizedReason);
+            return toResponse(product);
+        }
+
+        try {
+            product.setReservedQuantity(product.getReservedQuantity() - request.quantity());
+            product = productRepository.save(product);
+        } catch (RuntimeException ex) {
+            inventoryReleaseLogRepository.delete(releaseLog);
+            throw ex;
+        }
+
+        eventPublisher.publish(DomainEvent.create("InventoryReservationReleased", "inventory-service",
+                new InventoryReleaseEventPayload(product.getId(), product.getSku(), request.quantity(),
+                        product.getAvailableQuantity(), normalizedReferenceId, normalizedReason)));
 
         return toResponse(product);
     }
@@ -258,5 +320,7 @@ public class ProductService {
 
     public record ProductEventPayload(String productId, String sku, String name) {}
     public record InventoryEventPayload(String productId, String sku, int quantity, int availableQuantity) {}
+    public record InventoryReleaseEventPayload(String productId, String sku, int quantity, int availableQuantity,
+                                               String referenceId, String reason) {}
     public record PriceEventPayload(String productId, String sku, java.math.BigDecimal regularPrice, java.math.BigDecimal salePrice) {}
 }

@@ -1,7 +1,11 @@
 package com.example.skishop.inventory.controller;
 
+import com.example.skishop.inventory.dto.InternalReleaseStockRequest;
+import com.example.skishop.inventory.dto.ProductResponse;
 import com.example.skishop.inventory.model.Product;
 import com.example.skishop.inventory.repository.ProductRepository;
+import com.example.skishop.inventory.service.ProductService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,9 +35,11 @@ import java.util.UUID;
 public class InternalInventoryController {
 
     private final ProductRepository productRepository;
+    private final ProductService productService;
 
-    public InternalInventoryController(ProductRepository productRepository) {
+    public InternalInventoryController(ProductRepository productRepository, ProductService productService) {
         this.productRepository = productRepository;
+        this.productService = productService;
     }
 
     /** equipment-matching-agent.InventoryClient.searchBySkillAndCategory */
@@ -44,6 +50,8 @@ public class InternalInventoryController {
             @RequestParam(required = false) String skillLevel,
             @RequestParam(required = false) Integer maxPrice) {
         List<Map<String, Object>> result = productRepository.findAll().stream()
+                .filter(p -> p.getStatus() == Product.ProductStatus.ACTIVE)
+                .filter(p -> p.getStockQuantity() - p.getReservedQuantity() > 0)
                 .filter(p -> category == null || category.isBlank()
                         || category.equalsIgnoreCase(p.getCategoryId()))
                 .filter(p -> maxPrice == null
@@ -126,6 +134,12 @@ public class InternalInventoryController {
                 "reservedProductIds", reserved,
                 "failedProductIds", List.of(),
                 "expiresAt", DateTimeFormatter.ISO_INSTANT.format(Instant.now().plusSeconds(1800))));
+    }
+
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @PostMapping("/inventory/release")
+    public ResponseEntity<ProductResponse> release(@Valid @RequestBody InternalReleaseStockRequest request) {
+        return ResponseEntity.ok(productService.releaseStockBySku(request));
     }
 
     /** inventory-monitoring-agent.InventoryManagementClient.getLowStockAlerts */

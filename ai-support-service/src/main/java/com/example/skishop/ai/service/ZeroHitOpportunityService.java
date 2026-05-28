@@ -92,7 +92,11 @@ public class ZeroHitOpportunityService {
         final int effectiveLimit = Math.max(1, Math.min(100, limit));
 
         // search_logs からゼロヒット集約を取得
-        List<Map<String, Object>> rawData = fetchZeroHitAggregation(effectiveDays, effectiveMinCount, effectiveLimit * 2);
+        List<Map<String, Object>> fetched = fetchZeroHitAggregation(effectiveDays, effectiveMinCount, effectiveLimit * 2);
+        var availability = fetched == null
+                ? com.example.skishop.ai.dto.DataAvailability.unavailable(List.of("inventory-service"))
+                : com.example.skishop.ai.dto.DataAvailability.available();
+        List<Map<String, Object>> rawData = fetched == null ? List.of() : fetched;
 
         // D-F5-05: dismiss 済みキーワードを除外
         Set<String> dismissed = dismissalRepo.findAll().stream()
@@ -157,7 +161,7 @@ public class ZeroHitOpportunityService {
         var summary = new Summary(
                 filtered.size(), totalVolume, totalLoss, topCategory.isEmpty() ? "unknown" : topCategory);
 
-        return new ZeroHitOpportunityResponse(Instant.now(), effectiveDays, summary, opportunities);
+        return new ZeroHitOpportunityResponse(Instant.now(), effectiveDays, summary, opportunities, availability);
     }
 
     /**
@@ -260,7 +264,7 @@ public class ZeroHitOpportunityService {
                     .block();
         } catch (Exception e) {
             log.warn("ゼロヒット集約取得失敗", e);
-            return List.of();
+            return null;
         }
     }
 

@@ -17,8 +17,6 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -78,8 +76,13 @@ public class DeadStockService {
      */
     public DeadStockResponse getDeadStock() {
         // mv_sku_velocity から取得 (D-F4-06)
-        List<Map<String, Object>> velocityData = fetchSkuVelocity();
-        List<Map<String, Object>> inventoryData = fetchInventoryLevels();
+        List<Map<String, Object>> fetchedVelocity = fetchSkuVelocity();
+        List<Map<String, Object>> fetchedInventory = fetchInventoryLevels();
+        List<String> missingSources = new ArrayList<>();
+        if (fetchedVelocity == null) missingSources.add("sales-service");
+        if (fetchedInventory == null) missingSources.add("inventory-service");
+        List<Map<String, Object>> velocityData = fetchedVelocity == null ? List.of() : fetchedVelocity;
+        List<Map<String, Object>> inventoryData = fetchedInventory == null ? List.of() : fetchedInventory;
 
         List<DeadStockItem> items = new ArrayList<>();
 
@@ -115,7 +118,13 @@ public class DeadStockService {
                     .findFirst()
                     .map(inv -> (String) inv.getOrDefault("name", sku))
                     .orElse(sku);
-            items.add(new DeadStockItem(sku, name, stock, sales30, sales90, daysOfSupply, severity, suggestedPct, null));
+                String category = inventoryData.stream()
+                    .filter(inv -> sku.equals(inv.get("sku")))
+                    .findFirst()
+                        .map(inv -> String.valueOf(inv.getOrDefault("categoryId", vel.getOrDefault("categoryId", ""))))
+                        .orElse(String.valueOf(vel.getOrDefault("categoryId", "")));
+                items.add(new DeadStockItem(sku, name, stock, sales30, sales90, daysOfSupply,
+                    severity, suggestedPct, null, category));
         }
 
         // severity 順にソート
@@ -124,7 +133,7 @@ public class DeadStockService {
         // LLM ナラティブ生成
         String narrative = generateNarrativeSafe(items);
 
-        return new DeadStockResponse(Instant.now(), items, narrative);
+        return new DeadStockResponse(Instant.now(), items, narrative, availability(missingSources, 2));
     }
 
     /**
@@ -190,7 +199,7 @@ public class DeadStockService {
                     .block();
         } catch (Exception e) {
             log.warn("SKU velocity 取得失敗", e);
-            return List.of();
+            return null;
         }
     }
 
@@ -204,7 +213,7 @@ public class DeadStockService {
                     .block();
         } catch (Exception e) {
             log.warn("在庫データ取得失敗", e);
-            return List.of();
+            return null;
         }
     }
 
@@ -240,6 +249,13 @@ public class DeadStockService {
         } catch (Exception e) {
             log.error("dead_stock_actions 記録失敗: sku={}", sku, e);
         }
+    }
+
+    private static com.example.skishop.ai.dto.DataAvailability availability(List<String> missingSources, int sourceCount) {
+        if (missingSources.isEmpty()) return com.example.skishop.ai.dto.DataAvailability.available();
+        return missingSources.size() >= sourceCount
+                ? com.example.skishop.ai.dto.DataAvailability.unavailable(missingSources)
+                : com.example.skishop.ai.dto.DataAvailability.partial(missingSources);
     }
 
     @CircuitBreaker(name = "azureOpenAi", fallbackMethod = "fallbackNarrative")

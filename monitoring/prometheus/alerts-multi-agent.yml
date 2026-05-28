@@ -49,3 +49,36 @@ groups:
         annotations:
           summary: "Orchestrator の p95 レイテンシが 30 秒を超過"
           description: "Azure OpenAI のレート制限・サーキットブレーカー発火状況を確認してください。"
+
+  - name: outbox-relay
+    interval: 30s
+    rules:
+      - alert: OutboxFailedEventsDetected
+        expr: skishop_outbox_failed_count > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: outbox-relay
+        annotations:
+          summary: "failed outbox event が発生しています ({{ $labels.job }})"
+          description: "retry 上限を超過した event_outbox レコードがあります。last_error と failed_at を確認してください。Runbook: docs/runbook.md#outbox-relay"
+
+      - alert: OutboxOldestPendingTooOld
+        expr: skishop_outbox_oldest_pending_age_seconds > 900
+        for: 5m
+        labels:
+          severity: critical
+          component: outbox-relay
+        annotations:
+          summary: "outbox relay の pending が 15 分以上滞留しています ({{ $labels.job }})"
+          description: "relay worker、Kafka 接続、StreamBridge binding、event_outbox.next_retry_at を確認してください。Runbook: docs/runbook.md#outbox-relay"
+
+      - alert: OutboxPendingCountIncreasing
+        expr: increase(skishop_outbox_pending_count[10m]) > 50
+        for: 10m
+        labels:
+          severity: warning
+          component: outbox-relay
+        annotations:
+          summary: "outbox pending 件数が増加し続けています ({{ $labels.job }})"
+          description: "publish throughput と relay retry/error rate を確認してください。Runbook: docs/runbook.md#outbox-relay"

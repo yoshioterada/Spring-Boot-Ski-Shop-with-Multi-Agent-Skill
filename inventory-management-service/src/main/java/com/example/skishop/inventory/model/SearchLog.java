@@ -31,6 +31,13 @@ public class SearchLog {
     @Indexed
     private String keyword;
 
+    /** AI 等で拡張された検索キーワード。元クエリと同じ場合もある。 */
+    private String enhancedKeyword;
+
+    /** 検索元。例: inventory-product-search, ai-support-semantic。 */
+    @Indexed
+    private String source;
+
     /** 検索ヒット件数 (Page.totalElements)。0 のときはノーヒット検索。 */
     private long hitCount;
 
@@ -45,19 +52,29 @@ public class SearchLog {
     public SearchLog() {}
 
     public SearchLog(String keyword, long hitCount, long durationMs) {
+        this(keyword, null, "inventory-product-search", hitCount, durationMs);
+    }
+
+    public SearchLog(String keyword, String enhancedKeyword, String source, long hitCount, long durationMs) {
         this.keyword = keyword;
+        this.enhancedKeyword = enhancedKeyword;
+        this.source = source;
         this.hitCount = hitCount;
         this.durationMs = durationMs;
     }
 
     public String getId() { return id; }
     public String getKeyword() { return keyword; }
+    public String getEnhancedKeyword() { return enhancedKeyword; }
+    public String getSource() { return source; }
     public long getHitCount() { return hitCount; }
     public long getDurationMs() { return durationMs; }
     public Instant getCreatedAt() { return createdAt; }
 
     public void setId(String id) { this.id = id; }
     public void setKeyword(String keyword) { this.keyword = keyword; }
+    public void setEnhancedKeyword(String enhancedKeyword) { this.enhancedKeyword = enhancedKeyword; }
+    public void setSource(String source) { this.source = source; }
     public void setHitCount(long hitCount) { this.hitCount = hitCount; }
     public void setDurationMs(long durationMs) { this.durationMs = durationMs; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

@@ -33,9 +33,17 @@ export interface CreatePaymentIntentRequest {
 export interface PaymentResponse {
   id: string;
   userId: string;
-  orderId: string;
+  orderId?: string;
   paymentIntentId: string;
-  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'REFUNDED';
+  status:
+    | 'PENDING'
+    | 'REQUIRES_ACTION'
+    | 'AUTHORIZED'
+    | 'CAPTURED'
+    | 'FAILED'
+    | 'CANCELLED'
+    | 'PARTIALLY_REFUNDED'
+    | 'REFUNDED';
   amount: number;
   currency: string;
   paymentMethod: string;
@@ -46,7 +54,7 @@ export interface PaymentResponse {
 }
 
 export interface ProcessPaymentRequest {
-  paymentIntentId: string;
+  paymentMethodId: string;
 }
 
 export interface ValidateCouponRequest {

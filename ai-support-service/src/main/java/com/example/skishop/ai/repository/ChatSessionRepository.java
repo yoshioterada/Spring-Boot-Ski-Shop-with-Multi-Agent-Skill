@@ -13,4 +13,6 @@ public interface ChatSessionRepository extends MongoRepository<ChatSession, Stri
     Page<ChatSession> findByUserId(String userId, Pageable pageable);
 
     List<ChatSession> findByUserIdAndStatus(String userId, SessionStatus status);
+
+    long countByStatus(SessionStatus status);
 }

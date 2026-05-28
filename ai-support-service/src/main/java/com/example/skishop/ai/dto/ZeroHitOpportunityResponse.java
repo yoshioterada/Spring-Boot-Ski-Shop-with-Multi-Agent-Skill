@@ -10,8 +10,14 @@ public record ZeroHitOpportunityResponse(
         Instant generatedAt,
         int periodDays,
         Summary summary,
-        List<Opportunity> opportunities
+        List<Opportunity> opportunities,
+        DataAvailability availability
 ) {
+    public ZeroHitOpportunityResponse(Instant generatedAt, int periodDays,
+                                      Summary summary, List<Opportunity> opportunities) {
+        this(generatedAt, periodDays, summary, opportunities, DataAvailability.available());
+    }
+
     public record Summary(
             int totalZeroHitQueries,
             long totalSearchVolume,
